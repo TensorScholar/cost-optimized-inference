@@ -1,0 +1,115 @@
+"""Unit tests for caching strategies."""
+import pytest
+
+from inference_engine.domain.models.request import InferenceRequest, ModelParameters
+from inference_engine.domain.models.response import InferenceResponse, UsageMetrics, CacheInfo
+from inference_engine.domain.caching.exact import ExactCache
+
+
+@pytest.fixture
+def sample_request() -> InferenceRequest:
+    """Create sample inference request."""
+    return InferenceRequest(
+        prompt="What is 2+2?",
+        parameters=ModelParameters(max_tokens=50),
+    )
+
+
+@pytest.fixture
+def sample_response(sample_request: InferenceRequest) -> InferenceResponse:
+    """Create sample inference response."""
+    return InferenceResponse(
+        request_id=sample_request.id,
+        text="The answer is 4.",
+        model_used="test-model",
+        usage=UsageMetrics(
+            prompt_tokens=10,
+            completion_tokens=5,
+            total_tokens=15,
+            cost_usd=0.0001,
+        ),
+        cache_info=CacheInfo(hit=False),
+        latency_ms=50,
+    )
+
+
+class TestExactCache:
+    """Tests for ExactCache."""
+
+    @pytest.mark.asyncio
+    async def test_set_and_get(self, sample_request, sample_response):
+        """Test setting and getting from cache."""
+        cache = ExactCache(max_entries=1000)
+        
+        # Set
+        await cache.set(sample_request, sample_response)
+        
+        # Get
+        result = await cache.get(sample_request)
+        assert result is not None
+        
+        response, cache_info = result
+        assert cache_info.hit is True
+        assert response.text == sample_response.text
+
+    @pytest.mark.asyncio
+    async def test_cache_miss(self, sample_request):
+        """Test cache miss for non-existent entry."""
+        cache = ExactCache()
+        
+        result = await cache.get(sample_request)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_eviction(self):
+        """Test LRU eviction when cache is full."""
+        cache = ExactCache(max_entries=2)
+        
+        # Add entries
+        for i in range(3):
+            req = InferenceRequest(
+                prompt=f"Query {i}",
+                parameters=ModelParameters(),
+            )
+            resp = InferenceResponse(
+                request_id=req.id,
+                text=f"Response {i}",
+                model_used="test",
+                usage=UsageMetrics(prompt_tokens=1, completion_tokens=1, total_tokens=2),
+                cache_info=CacheInfo(hit=False),
+                latency_ms=10,
+            )
+            await cache.set(req, resp)
+        
+        # Should have evicted oldest
+        stats = cache.get_metrics()
+        assert stats["cache_size"] == 2
+
+    @pytest.mark.asyncio
+    async def test_invalidate_pattern(self, sample_request, sample_response):
+        """Test cache invalidation by pattern."""
+        cache = ExactCache()
+        
+        await cache.set(sample_request, sample_response)
+        
+        # Invalidate
+        count = await cache.invalidate("France")
+        assert count == 0
+        
+        count = await cache.invalidate("2+2")
+        assert count == 1
+        
+        # Entry should be gone
+        result = await cache.get(sample_request)
+        assert result is None
+
+    def test_cache_metrics(self):
+        """Test cache metrics tracking."""
+        cache = ExactCache()
+        
+        metrics = cache.get_metrics()
+        assert "hits" in metrics
+        assert "misses" in metrics
+        assert "hit_rate" in metrics
+        assert "cache_size" in metrics
+

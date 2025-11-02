@@ -1,0 +1,40 @@
+groups:
+  - name: inference_engine_alerts
+    interval: 30s
+    rules:
+      - alert: HighLatency
+        expr: inference_latency_ms_p95 > 200
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High p95 latency detected"
+          description: "p95 latency is {{ $value }}ms (threshold: 200ms)"
+
+      - alert: LowCacheHitRate
+        expr: (cache_hits_total / (cache_hits_total + cache_misses_total)) < 0.4
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low cache hit rate"
+          description: "Cache hit rate is {{ $value | humanizePercentage }} (threshold: 40%)"
+
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }}"
+
+      - alert: ModelUnhealthy
+        expr: up{job="model-backend"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Model backend is down"
+          description: "Model backend {{ $labels.instance }} is unreachable"
+

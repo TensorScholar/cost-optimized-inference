@@ -1,12 +1,21 @@
-from dataclasses import dataclass
+"""Inference service for processing single requests."""
 from ...dto.inference_dto import InferenceInputDTO, InferenceOutputDTO
-from ...dto.metrics_dto import RequestMetricsDTO
 from ...utils.text_utils import estimate_tokens
 
 
-@dataclass
 class InferenceService:
+    """Service for processing single inference requests."""
+
     async def infer(self, dto: InferenceInputDTO) -> InferenceOutputDTO:
+        """
+        Process inference request.
+
+        Args:
+            dto: Inference input DTO
+
+        Returns:
+            Inference output DTO with generated text and metadata
+        """
         tokens = estimate_tokens(dto.prompt)
         return InferenceOutputDTO(
             text=f"Echo: {dto.prompt[:200]}",

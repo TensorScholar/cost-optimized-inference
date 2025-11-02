@@ -1,0 +1,38 @@
+{
+  "dashboard": {
+    "title": "Inference Engine Overview",
+    "panels": [
+      {
+        "title": "Requests Per Second",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(inference_requests_total[5m])",
+            "legendFormat": "Requests/sec"
+          }
+        ]
+      },
+      {
+        "title": "Latency Distribution",
+        "type": "heatmap",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, inference_latency_ms_bucket)",
+            "legendFormat": "p95"
+          }
+        ]
+      },
+      {
+        "title": "Cache Hit Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(cache_hits_total[5m]) / rate(cache_lookups_total[5m])",
+            "legendFormat": "Hit Rate"
+          }
+        ]
+      }
+    ]
+  }
+}
+
