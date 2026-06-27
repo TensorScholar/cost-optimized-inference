@@ -14,6 +14,9 @@ dependencies = [
   "numpy>=1.26,<2",
 ]
 
+[project.scripts]
+inference-smoke = "inference_engine.cli:main"
+
 [project.optional-dependencies]
 dev = [
   "pytest>=8,<10",

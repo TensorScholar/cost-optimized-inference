@@ -1,0 +1,3 @@
+{"id":"json-small","prompt":"Return a compact JSON object with keys status and reason. Use status ok.","tags":{"task":"json","difficulty":"easy"}}
+{"id":"summarize-small","prompt":"Summarize this sentence in five words: Cost-aware routing must prove latency, cost, and quality tradeoffs with reproducible evidence.","tags":{"task":"summarization","difficulty":"easy"}}
+{"id":"classify-small","prompt":"Classify the sentiment as positive, neutral, or negative: The benchmark ran successfully but still needs quality evaluation.","tags":{"task":"classification","difficulty":"easy"}}

@@ -1,0 +1,212 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+import pytest
+
+from inference_engine.domain.cost.calculator import CostCalculator
+from inference_engine.domain.cost.pricing import ModelPricing, PricingTable
+from inference_engine.domain.models.request import InferenceRequest, ModelParameters
+from inference_engine.infrastructure.models import openai_backend
+from inference_engine.infrastructure.models.errors import ProviderError, ProviderErrorType
+from inference_engine.infrastructure.models.openai_backend import OpenAIBackend, RetryPolicy
+
+_DEFAULT_USAGE = object()
+
+
+@dataclass
+class FakePromptTokensDetails:
+    cached_tokens: int = 0
+
+
+@dataclass
+class FakeUsage:
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    prompt_tokens_details: FakePromptTokensDetails | None = None
+
+
+@dataclass
+class FakeMessage:
+    content: str | None
+
+
+@dataclass
+class FakeChoice:
+    message: FakeMessage
+    finish_reason: str = "stop"
+
+
+@dataclass
+class FakeResponse:
+    choices: list[FakeChoice]
+    usage: FakeUsage | None
+
+
+class FakeOpenAIClient:
+    instances: list[FakeOpenAIClient] = []
+    queued_results: list[Any] = []
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        base_url: str | None,
+        timeout: float,
+        max_retries: int,
+    ) -> None:
+        self.api_key = api_key
+        self.base_url = base_url
+        self.timeout = timeout
+        self.max_retries = max_retries
+        self.calls: list[dict[str, Any]] = []
+        self.chat = _FakeChat(self)
+        self.instances.append(self)
+
+
+class _FakeChat:
+    def __init__(self, client: FakeOpenAIClient) -> None:
+        self.completions = _FakeCompletions(client)
+
+
+class _FakeCompletions:
+    def __init__(self, client: FakeOpenAIClient) -> None:
+        self.client = client
+
+    async def create(self, **kwargs: Any) -> Any:
+        self.client.calls.append(kwargs)
+        result = FakeOpenAIClient.queued_results.pop(0)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+
+class FakeStatusError(Exception):
+    def __init__(self, status_code: int) -> None:
+        super().__init__(f"status {status_code}")
+        self.status_code = status_code
+
+
+@pytest.fixture(autouse=True)
+def fake_openai_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    FakeOpenAIClient.instances = []
+    FakeOpenAIClient.queued_results = []
+    monkeypatch.setattr(openai_backend, "AsyncOpenAI", FakeOpenAIClient)
+
+
+def _calculator() -> CostCalculator:
+    return CostCalculator(
+        PricingTable(
+            prices={
+                "test-model": ModelPricing(
+                    model="test-model",
+                    input_per_million=1.00,
+                    output_per_million=2.00,
+                    cached_input_per_million=0.25,
+                )
+            },
+            version="test",
+        )
+    )
+
+
+def _response(usage: FakeUsage | None | object = _DEFAULT_USAGE) -> FakeResponse:
+    response_usage = (
+        FakeUsage(
+            prompt_tokens=1_000,
+            completion_tokens=500,
+            total_tokens=1_500,
+        )
+        if usage is _DEFAULT_USAGE
+        else usage
+    )
+    return FakeResponse(
+        choices=[FakeChoice(message=FakeMessage(content="hello"))],
+        usage=response_usage if isinstance(response_usage, FakeUsage) else None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_openai_backend_sends_real_chat_completion_shape() -> None:
+    FakeOpenAIClient.queued_results = [_response()]
+    backend = OpenAIBackend(
+        api_key="test-key",
+        model_name="test-model",
+        base_url="https://provider.example/v1",
+        timeout_seconds=7.5,
+        retry_policy=RetryPolicy(max_attempts=1),
+        cost_calculator=_calculator(),
+    )
+
+    response = await backend.infer(
+        InferenceRequest(
+            prompt="Hello",
+            parameters=ModelParameters(max_tokens=32, temperature=0.2, top_p=0.8),
+        )
+    )
+
+    client = FakeOpenAIClient.instances[0]
+    assert client.api_key == "test-key"
+    assert client.base_url == "https://provider.example/v1"
+    assert client.timeout == 7.5
+    assert client.max_retries == 0
+    assert client.calls[0]["model"] == "test-model"
+    assert client.calls[0]["messages"] == [{"role": "user", "content": "Hello"}]
+    assert client.calls[0]["max_tokens"] == 32
+    assert response.text == "hello"
+    assert response.usage.cost_usd == pytest.approx(0.002)
+
+
+@pytest.mark.asyncio
+async def test_openai_backend_raises_when_usage_missing() -> None:
+    FakeOpenAIClient.queued_results = [_response(usage=None)]
+    backend = OpenAIBackend(
+        api_key="test-key",
+        model_name="test-model",
+        retry_policy=RetryPolicy(max_attempts=1),
+        cost_calculator=_calculator(),
+    )
+
+    with pytest.raises(ProviderError) as exc_info:
+        await backend.infer(InferenceRequest(prompt="Hello"))
+
+    assert exc_info.value.error_type == ProviderErrorType.MISSING_USAGE
+    assert exc_info.value.retryable is False
+
+
+@pytest.mark.asyncio
+async def test_openai_backend_retries_retryable_errors() -> None:
+    FakeOpenAIClient.queued_results = [
+        FakeStatusError(429),
+        _response(),
+    ]
+    backend = OpenAIBackend(
+        api_key="test-key",
+        model_name="test-model",
+        retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=0),
+        cost_calculator=_calculator(),
+    )
+
+    response = await backend.infer(InferenceRequest(prompt="Hello"))
+
+    assert response.text == "hello"
+    assert len(FakeOpenAIClient.instances[0].calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_openai_backend_does_not_retry_invalid_request() -> None:
+    FakeOpenAIClient.queued_results = [FakeStatusError(400)]
+    backend = OpenAIBackend(
+        api_key="test-key",
+        model_name="test-model",
+        retry_policy=RetryPolicy(max_attempts=3, backoff_seconds=0),
+        cost_calculator=_calculator(),
+    )
+
+    with pytest.raises(ProviderError) as exc_info:
+        await backend.infer(InferenceRequest(prompt="Hello"))
+
+    assert exc_info.value.error_type == ProviderErrorType.INVALID_REQUEST
+    assert len(FakeOpenAIClient.instances[0].calls) == 1

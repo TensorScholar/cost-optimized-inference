@@ -1,4 +1,7 @@
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
+from time import perf_counter
+from typing import Any
 
 import structlog
 
@@ -7,22 +10,54 @@ try:
 except ImportError:
     AsyncOpenAI = None
 
+from ...domain.cost.calculator import CostCalculator
 from ...domain.models.request import InferenceRequest
 from ...domain.models.response import CacheInfo, InferenceResponse, UsageMetrics
 from .base import AbstractModelBackend
+from .errors import ProviderError, classify_openai_error, missing_usage_error
 
 logger = structlog.get_logger()
 
 
-class OpenAIBackend(AbstractModelBackend):
-    """OpenAI API model backend."""
+@dataclass(frozen=True)
+class RetryPolicy:
+    """Bounded retry policy for provider calls."""
 
-    def __init__(self, api_key: str, model_name: str = "gpt-3.5-turbo"):
+    max_attempts: int = 2
+    backoff_seconds: float = 0.25
+
+    def __post_init__(self) -> None:
+        if self.max_attempts < 1:
+            raise ValueError("max_attempts must be at least 1")
+        if self.backoff_seconds < 0:
+            raise ValueError("backoff_seconds must be non-negative")
+
+
+class OpenAIBackend(AbstractModelBackend):
+    """OpenAI-compatible chat completions backend."""
+
+    def __init__(
+        self,
+        api_key: str,
+        model_name: str = "gpt-4o-mini",
+        *,
+        base_url: str | None = None,
+        timeout_seconds: float = 30.0,
+        retry_policy: RetryPolicy | None = None,
+        cost_calculator: CostCalculator | None = None,
+    ) -> None:
         if AsyncOpenAI is None:
             raise ImportError("openai package not installed")
 
-        self.client = AsyncOpenAI(api_key=api_key)
+        self.client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=timeout_seconds,
+            max_retries=0,
+        )
         self._model_name = model_name
+        self.retry_policy = retry_policy or RetryPolicy()
+        self.cost_calculator = cost_calculator or CostCalculator()
 
     @property
     def model_name(self) -> str:
@@ -30,37 +65,37 @@ class OpenAIBackend(AbstractModelBackend):
 
     async def infer(self, request: InferenceRequest) -> InferenceResponse:
         """Run inference via OpenAI API."""
-        import time
-
-        start = time.time()
+        start = perf_counter()
 
         messages = request.messages or [{"role": "user", "content": request.prompt}]
+        response = await self._create_completion(messages, request)
 
-        response = await self.client.chat.completions.create(
-            model=self.model_name,
-            messages=messages,
-            max_tokens=request.parameters.max_tokens,
-            temperature=request.parameters.temperature,
-        )
-
-        elapsed_ms = int((time.time() - start) * 1000)
-
-        completion = response.choices[0].message.content
+        elapsed_ms = int((perf_counter() - start) * 1000)
+        completion = response.choices[0].message.content or ""
         usage = response.usage
+        if usage is None:
+            raise missing_usage_error(self.model_name)
 
         return InferenceResponse(
             request_id=request.id,
-            text=completion or "",
+            text=completion,
             finish_reason=response.choices[0].finish_reason or "stop",
             model_used=self.model_name,
             usage=UsageMetrics(
                 prompt_tokens=usage.prompt_tokens,
                 completion_tokens=usage.completion_tokens,
                 total_tokens=usage.total_tokens,
-                cost_usd=0.0,  # Will be calculated externally
+                cached_tokens=_extract_cached_tokens(usage),
+                cost_usd=self.cost_calculator.calculate_for_model_name(
+                    model_name=self.model_name,
+                    input_tokens=usage.prompt_tokens,
+                    output_tokens=usage.completion_tokens,
+                    cached_input_tokens=_extract_cached_tokens(usage),
+                ),
             ),
             cache_info=CacheInfo(hit=False),
             latency_ms=elapsed_ms,
+            inference_time_ms=elapsed_ms,
         )
 
     async def infer_batch(self, requests: list[InferenceRequest]) -> list[InferenceResponse]:
@@ -74,13 +109,8 @@ class OpenAIBackend(AbstractModelBackend):
         """Stream tokens from OpenAI."""
         messages = request.messages or [{"role": "user", "content": request.prompt}]
 
-        async for chunk in await self.client.chat.completions.create(
-            model=self.model_name,
-            messages=messages,
-            max_tokens=request.parameters.max_tokens,
-            temperature=request.parameters.temperature,
-            stream=True,
-        ):
+        stream = await self._create_completion(messages, request, stream=True)
+        async for chunk in stream:
             if chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
 
@@ -96,3 +126,54 @@ class OpenAIBackend(AbstractModelBackend):
         except Exception as e:
             logger.error("openai_health_check_failed", error=str(e))
             return False
+
+    async def _create_completion(
+        self,
+        messages: list[dict[str, str]],
+        request: InferenceRequest,
+        *,
+        stream: bool = False,
+    ) -> Any:
+        import asyncio
+
+        last_error: ProviderError | None = None
+        for attempt in range(1, self.retry_policy.max_attempts + 1):
+            try:
+                return await self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=messages,
+                    max_tokens=request.parameters.max_tokens,
+                    temperature=request.parameters.temperature,
+                    top_p=request.parameters.top_p,
+                    frequency_penalty=request.parameters.frequency_penalty,
+                    presence_penalty=request.parameters.presence_penalty,
+                    stop=request.parameters.stop_sequences or None,
+                    stream=stream,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                provider_error = classify_openai_error(exc)
+                last_error = provider_error
+                if not provider_error.retryable or attempt >= self.retry_policy.max_attempts:
+                    raise provider_error from exc
+                await asyncio.sleep(self.retry_policy.backoff_seconds * attempt)
+
+        if last_error is not None:
+            raise last_error
+        raise ProviderError(
+            error_type=classify_openai_error(RuntimeError("provider call failed")).error_type,
+            message="Provider call failed without a captured exception",
+            provider="openai-compatible",
+            retryable=False,
+        )
+
+
+def _extract_cached_tokens(usage: Any) -> int:
+    details = getattr(usage, "prompt_tokens_details", None)
+    if details is None:
+        return 0
+    cached_tokens = getattr(details, "cached_tokens", 0)
+    if isinstance(cached_tokens, int):
+        return cached_tokens
+    return 0

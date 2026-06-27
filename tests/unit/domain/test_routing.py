@@ -2,7 +2,8 @@
 import pytest
 
 from inference_engine.domain.models.request import InferenceRequest, ModelParameters
-from inference_engine.domain.models.routing import ModelConfig, ModelTier
+from inference_engine.domain.models.routing import ModelConfig, ModelTier, RoutingStrategy
+from inference_engine.domain.routing.baseline import BaselineRouter, BaselineRoutingModeError
 from inference_engine.domain.routing.complexity import ComplexityEstimator
 from inference_engine.domain.routing.cost_aware import CostAwareRouter
 from inference_engine.domain.routing.load_balanced import LoadBalancedRouter
@@ -116,6 +117,59 @@ class TestCostAwareRouter:
         assert len(decision.fallback_models) >= 0
 
 
+class TestBaselineRouter:
+    """Tests for deterministic benchmark baseline routing modes."""
+
+    @pytest.mark.asyncio
+    async def test_single_model_mode_routes_to_configured_model(self, simple_request, sample_models):
+        """Test single_model baseline always uses the configured model."""
+        router = BaselineRouter(
+            sample_models,
+            ComplexityEstimator(),
+            mode=RoutingStrategy.SINGLE_MODEL,
+            single_model_id="gpt-4",
+        )
+
+        decision = await router.route(simple_request)
+
+        assert decision.strategy == RoutingStrategy.SINGLE_MODEL
+        assert decision.selected_model.id == "gpt-4"
+        assert "single_model baseline" in decision.decision_reason
+
+    @pytest.mark.asyncio
+    async def test_rule_based_mode_uses_cheapest_sufficient_tier(
+        self,
+        simple_request,
+        complex_request,
+        sample_models,
+    ):
+        """Test rule_based baseline maps complexity to the cheapest sufficient tier."""
+        router = BaselineRouter(
+            sample_models,
+            ComplexityEstimator(),
+            mode=RoutingStrategy.RULE_BASED,
+        )
+
+        simple_decision = await router.route(simple_request)
+        complex_decision = await router.route(complex_request)
+
+        assert simple_decision.selected_model.id == "gpt-3.5"
+        assert complex_decision.selected_model.tier.rank >= ModelTier.STANDARD.rank
+        assert complex_decision.complexity_estimate is not None
+
+    @pytest.mark.asyncio
+    async def test_single_model_mode_requires_model_id(self, simple_request, sample_models):
+        """Test single_model baseline fails clearly without a configured model id."""
+        router = BaselineRouter(
+            sample_models,
+            ComplexityEstimator(),
+            mode=RoutingStrategy.SINGLE_MODEL,
+        )
+
+        with pytest.raises(BaselineRoutingModeError, match="single_model_id"):
+            await router.route(simple_request)
+
+
 class TestLoadBalancedRouter:
     """Tests for LoadBalancedRouter."""
 
@@ -130,4 +184,3 @@ class TestLoadBalancedRouter:
 
         # Should alternate
         assert decision1.selected_model.id != decision2.selected_model.id
-

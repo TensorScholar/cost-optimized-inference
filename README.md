@@ -18,22 +18,28 @@ This repository is being rebuilt around those questions.
 
 ## Current Status
 
-**Phase 0 baseline repair is complete.**
+**Phase 0 baseline repair is complete. Phase 1 implementation has started.**
 
 The repository now has:
 
 - an importable Python package baseline;
 - strict local gates for lint, type checking, and tests;
 - early domain primitives for batching, caching, routing, and cost calculation;
+- an OpenAI-compatible provider adapter with timeout configuration, bounded retries, cancellation propagation, normalized provider errors, usage extraction, and real cost accounting;
+- a versioned pricing table for supported model cost estimates;
+- an append-only JSONL request ledger for local smoke and benchmark runs;
+- a small `inference-smoke` CLI for one real provider call;
+- a benchmark harness with a replayable JSONL workload and JSON report output;
+- deterministic `single_model` and `rule_based` baseline routing modes;
 - architecture and benchmark planning docs under [docs/](./docs/README.md);
 - repo-level Codex guidance and review skills for keeping future work honest.
 
 Not implemented yet:
 
-- real provider execution;
-- provider usage ledger;
-- policy router with budget enforcement;
-- benchmark reports with measured savings;
+- provider usage storage in SQLite or DuckDB;
+- policy router with budget enforcement and observed latency profiles;
+- measured savings reports;
+- quality evaluation;
 - async batch lane;
 - prompt cache advisor.
 
@@ -96,28 +102,43 @@ Current baseline:
 
 ```text
 ruff:  all checks passed
-mypy:  no issues found in 70 source files
-pytest: 26 passed
+mypy:  no issues found in 78 source files
+pytest: 43 passed
+```
+
+Run one real provider smoke call when `OPENAI_API_KEY` is set:
+
+```bash
+.venv/bin/python -m inference_engine.cli \
+  --provider openai \
+  --model gpt-4o-mini \
+  --prompt "Return JSON only with keys status and reason."
+```
+
+Run the v0 benchmark harness:
+
+```bash
+.venv/bin/python scripts/run_benchmark.py \
+  --workload benchmarks/workloads/smoke.jsonl \
+  --strategy single_model \
+  --model gpt-4o-mini
 ```
 
 ## Roadmap
 
-1. **Phase 1: Core request model and usage ledger**
-   Store request, route decision, usage, latency, and price-version records.
+1. **Phase 1: Real provider path and local ledger**
+   OpenAI-compatible execution, normalized errors, cost accounting, request tracing, and smoke CLI.
 
-2. **Phase 2: Real provider adapter**
-   Add one provider path with timeout, retry budget, cancellation, error taxonomy, and real usage extraction.
+2. **Phase 2: Benchmark reports and baseline comparison**
+   Compare `single_model` and `rule_based` strategies on the same replayable workload.
 
 3. **Phase 3: Policy router**
    Route by cost, latency SLO, quality tier, deadline, and fallback constraints.
 
-4. **Phase 4: Benchmark harness**
-   Compare baseline versus optimized routing on replayable workloads.
-
-5. **Phase 5: Eval-aware routing**
+4. **Phase 4: Eval-aware routing**
    Prevent cheaper routing from silently degrading answer quality.
 
-6. **Phase 6: Async batch lane and prompt-cache advisor**
+5. **Phase 5: Async batch lane and prompt-cache advisor**
    Add real cost levers for non-urgent and repeated-prefix workloads.
 
 See [Implementation Roadmap](./docs/02_IMPLEMENTATION_ROADMAP.md) for acceptance criteria.
@@ -133,4 +154,3 @@ See [Implementation Roadmap](./docs/02_IMPLEMENTATION_ROADMAP.md) for acceptance
 ## Principle
 
 Small, real, measurable infrastructure beats a large scaffold with fake production claims.
-

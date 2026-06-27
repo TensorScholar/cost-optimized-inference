@@ -1,0 +1,114 @@
+from __future__ import annotations
+
+import json
+from dataclasses import asdict, dataclass
+from pathlib import Path
+
+from ..infrastructure.telemetry.request_log import RequestTrace
+
+
+@dataclass(frozen=True)
+class WorkloadItem:
+    """One prompt in a replayable benchmark workload."""
+
+    id: str
+    prompt: str
+    tags: dict[str, str]
+
+
+@dataclass(frozen=True)
+class BenchmarkReport:
+    """Aggregate report generated from raw request trace records."""
+
+    workload_path: str
+    strategy: str
+    provider: str
+    model: str
+    request_count: int
+    success_count: int
+    failure_count: int
+    error_rate: float
+    latency_p50_ms: int
+    latency_p95_ms: int
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    estimated_cost_usd: float
+    ledger_path: str
+    limitations: list[str]
+
+
+def load_workload(path: Path) -> list[WorkloadItem]:
+    items: list[WorkloadItem] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            if not line.strip():
+                continue
+            raw = json.loads(line)
+            item_id = raw.get("id")
+            prompt = raw.get("prompt")
+            tags = raw.get("tags", {})
+            if not isinstance(item_id, str) or not item_id:
+                raise ValueError(f"{path}:{line_number} missing string id")
+            if not isinstance(prompt, str) or not prompt:
+                raise ValueError(f"{path}:{line_number} missing string prompt")
+            if not isinstance(tags, dict) or not all(
+                isinstance(key, str) and isinstance(value, str) for key, value in tags.items()
+            ):
+                raise ValueError(f"{path}:{line_number} tags must be an object of strings")
+            items.append(WorkloadItem(id=item_id, prompt=prompt, tags=tags))
+    if not items:
+        raise ValueError(f"{path} did not contain any workload items")
+    return items
+
+
+def summarize_traces(
+    *,
+    workload_path: Path,
+    strategy: str,
+    provider: str,
+    model: str,
+    ledger_path: Path,
+    traces: list[RequestTrace],
+) -> BenchmarkReport:
+    latencies = sorted(trace.latency_ms for trace in traces)
+    success_traces = [trace for trace in traces if trace.error_type is None]
+    request_count = len(traces)
+    failure_count = request_count - len(success_traces)
+    return BenchmarkReport(
+        workload_path=str(workload_path),
+        strategy=strategy,
+        provider=provider,
+        model=model,
+        request_count=request_count,
+        success_count=len(success_traces),
+        failure_count=failure_count,
+        error_rate=failure_count / request_count if request_count else 0.0,
+        latency_p50_ms=_percentile(latencies, 50),
+        latency_p95_ms=_percentile(latencies, 95),
+        prompt_tokens=sum(trace.prompt_tokens for trace in success_traces),
+        completion_tokens=sum(trace.completion_tokens for trace in success_traces),
+        total_tokens=sum(trace.total_tokens for trace in success_traces),
+        estimated_cost_usd=sum(trace.estimated_cost_usd for trace in success_traces),
+        ledger_path=str(ledger_path),
+        limitations=[
+            "Cost is calculated from provider usage metadata and the repository pricing table.",
+            "This v0 report does not include quality scoring or savings claims.",
+        ],
+    )
+
+
+def write_report(report: BenchmarkReport, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(asdict(report), handle, indent=2, sort_keys=True)
+        handle.write("\n")
+
+
+def _percentile(values: list[int], percentile: int) -> int:
+    if not values:
+        return 0
+    if len(values) == 1:
+        return values[0]
+    index = round((percentile / 100) * (len(values) - 1))
+    return values[index]

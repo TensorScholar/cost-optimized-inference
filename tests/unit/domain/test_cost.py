@@ -2,6 +2,11 @@
 import pytest
 
 from inference_engine.domain.cost.calculator import CostCalculator
+from inference_engine.domain.cost.pricing import (
+    ModelPricing,
+    PricingTable,
+    UnknownModelPricingError,
+)
 from inference_engine.domain.models.cost import CostBreakdown
 from inference_engine.domain.models.routing import ModelConfig, ModelTier
 
@@ -55,6 +60,65 @@ class TestCostCalculator:
         )
 
         assert savings > 0
+
+    def test_calculate_for_model_name_uses_versioned_pricing(self):
+        """Test provider usage cost calculation from model pricing."""
+        calculator = CostCalculator(
+            PricingTable(
+                prices={
+                    "test-model": ModelPricing(
+                        model="test-model",
+                        input_per_million=1.00,
+                        output_per_million=2.00,
+                    )
+                },
+                version="test",
+            )
+        )
+
+        cost = calculator.calculate_for_model_name(
+            "test-model",
+            input_tokens=1_000,
+            output_tokens=500,
+        )
+
+        assert cost == pytest.approx(0.002)
+
+    def test_calculate_for_model_name_uses_cached_input_rate(self):
+        """Test cached input tokens are priced separately when available."""
+        calculator = CostCalculator(
+            PricingTable(
+                prices={
+                    "test-model": ModelPricing(
+                        model="test-model",
+                        input_per_million=1.00,
+                        output_per_million=2.00,
+                        cached_input_per_million=0.25,
+                    )
+                },
+                version="test",
+            )
+        )
+
+        cost = calculator.calculate_for_model_name(
+            "test-model",
+            input_tokens=1_000,
+            output_tokens=500,
+            cached_input_tokens=400,
+        )
+
+        assert cost == pytest.approx(0.0017)
+
+    def test_calculate_for_model_name_fails_unknown_pricing(self):
+        """Test unknown model pricing fails instead of silently returning fake cost."""
+        calculator = CostCalculator(PricingTable(prices={}, version="test"))
+
+        with pytest.raises(UnknownModelPricingError):
+            calculator.calculate_for_model_name(
+                "missing-model",
+                input_tokens=1,
+                output_tokens=1,
+            )
 
 
 class TestCostBreakdown:

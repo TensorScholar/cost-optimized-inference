@@ -23,6 +23,8 @@ class ModelTier(StrEnum):
 
 
 class RoutingStrategy(StrEnum):
+    SINGLE_MODEL = "single_model"
+    RULE_BASED = "rule_based"
     COST_OPTIMAL = "cost_optimal"
     LATENCY_OPTIMAL = "latency_optimal"
     QUALITY_OPTIMAL = "quality_optimal"
