@@ -1,8 +1,7 @@
 """Metrics and analytics API routes."""
+
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Dict
-
 
 router = APIRouter()
 
@@ -29,7 +28,7 @@ async def get_metrics_summary() -> MetricsSummaryDTO:
 
 
 @router.get("/metrics/cache")
-async def get_cache_metrics() -> Dict:
+async def get_cache_metrics() -> dict:
     """Get detailed cache performance metrics."""
     # Stub - would aggregate from cache services
     return {
@@ -40,7 +39,7 @@ async def get_cache_metrics() -> Dict:
 
 
 @router.get("/metrics/cost")
-async def get_cost_metrics() -> Dict:
+async def get_cost_metrics() -> dict:
     """Get detailed cost breakdown metrics."""
     # Stub - would aggregate from cost attribution
     return {

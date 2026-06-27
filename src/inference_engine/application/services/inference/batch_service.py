@@ -1,8 +1,8 @@
-from typing import List
+
 import structlog
 
-from ...dto.inference_dto import InferenceInputDTO, InferenceOutputDTO
 from ...dto.batch_dto import BatchInputDTO, BatchOutputDTO
+from ...dto.inference_dto import InferenceOutputDTO
 from .inference_service import InferenceService
 
 logger = structlog.get_logger()
@@ -24,7 +24,7 @@ class BatchService:
         Returns:
             Batch output DTO with responses
         """
-        responses: List[InferenceOutputDTO] = []
+        responses: list[InferenceOutputDTO] = []
 
         for request in batch_input.requests:
             response = await self.inference_service.infer(request)

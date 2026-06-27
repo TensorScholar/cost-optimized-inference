@@ -1,11 +1,11 @@
-from typing import Optional, Tuple
+
 import structlog
 
-from ....domain.models.request import InferenceRequest
-from ....domain.models.response import InferenceResponse, CacheInfo
 from ....domain.caching.exact import ExactCache
-from ....domain.caching.semantic import SemanticCache
 from ....domain.caching.prefix import PrefixCache
+from ....domain.caching.semantic import SemanticCache
+from ....domain.models.request import InferenceRequest
+from ....domain.models.response import CacheInfo, InferenceResponse
 
 logger = structlog.get_logger()
 
@@ -20,8 +20,8 @@ class CacheService:
     def __init__(
         self,
         exact_cache: ExactCache,
-        semantic_cache: Optional[SemanticCache] = None,
-        prefix_cache: Optional[PrefixCache] = None,
+        semantic_cache: SemanticCache | None = None,
+        prefix_cache: PrefixCache | None = None,
     ):
         self.exact_cache = exact_cache
         self.semantic_cache = semantic_cache
@@ -29,7 +29,7 @@ class CacheService:
 
     async def get(
         self, request: InferenceRequest
-    ) -> Optional[Tuple[InferenceResponse, CacheInfo]]:
+    ) -> tuple[InferenceResponse, CacheInfo] | None:
         """
         Get cached response for request.
 
@@ -72,7 +72,7 @@ class CacheService:
 
         logger.debug("cache_set_complete", request_id=str(request.id))
 
-    async def invalidate(self, pattern: Optional[str] = None) -> int:
+    async def invalidate(self, pattern: str | None = None) -> int:
         """Invalidate caches."""
         count = await self.exact_cache.invalidate(pattern)
 

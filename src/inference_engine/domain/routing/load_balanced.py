@@ -1,10 +1,9 @@
-from typing import List
+
 import structlog
 
 from ..models.request import InferenceRequest
-from ..models.routing import ModelConfig, RoutingDecision, RoutingStrategy, ModelTier
+from ..models.routing import ModelConfig, RoutingDecision, RoutingStrategy
 from .base import AbstractRouter
-
 
 logger = structlog.get_logger()
 
@@ -16,7 +15,7 @@ class LoadBalancedRouter(AbstractRouter):
     Distributes requests evenly to prevent overloading any single instance.
     """
 
-    def __init__(self, models: List[ModelConfig]) -> None:
+    def __init__(self, models: list[ModelConfig]) -> None:
         self.models = models
         self.current_index = 0
 

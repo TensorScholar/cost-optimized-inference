@@ -2,8 +2,7 @@ import structlog
 
 from ....domain.models.request import InferenceRequest
 from ....domain.models.routing import RoutingDecision
-from ....domain.routing.cost_aware import CostAwareRouter
-from ....domain.routing.load_balanced import LoadBalancedRouter
+from ....domain.routing.base import AbstractRouter
 
 logger = structlog.get_logger()
 
@@ -11,7 +10,7 @@ logger = structlog.get_logger()
 class RoutingService:
     """Service for intelligent model routing."""
 
-    def __init__(self, routers: dict):
+    def __init__(self, routers: dict[str, AbstractRouter]) -> None:
         self.routers = routers
 
     async def route(self, request: InferenceRequest) -> RoutingDecision:
@@ -41,4 +40,3 @@ class RoutingService:
         )
 
         return decision
-

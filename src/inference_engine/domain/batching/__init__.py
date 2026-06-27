@@ -1,3 +1,2 @@
-__all__ = []
-
+"""Batching domain services."""
 

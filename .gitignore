@@ -1,28 +1,22 @@
-# Python
+.DS_Store
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-*.so
-
-# Virtual envs
-.venv/
-.env
-
-# Build artifacts
-build/
-dist/
-*.egg-info/
-
-# Tools caches
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+dist/
+build/
+*.egg-info/
+runs/
+*.sqlite
+*.sqlite3
+*.duckdb
 
-# Editors/OS
-.DS_Store
-.idea/
-.vscode/
-
-# Logs
-*.log

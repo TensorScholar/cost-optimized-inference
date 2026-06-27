@@ -3,8 +3,8 @@ import pytest
 
 from inference_engine.domain.models.request import InferenceRequest, ModelParameters
 from inference_engine.domain.models.routing import ModelConfig, ModelTier
-from inference_engine.domain.routing.cost_aware import CostAwareRouter
 from inference_engine.domain.routing.complexity import ComplexityEstimator
+from inference_engine.domain.routing.cost_aware import CostAwareRouter
 from inference_engine.domain.routing.load_balanced import LoadBalancedRouter
 
 
@@ -56,7 +56,7 @@ class TestComplexityEstimator:
     async def test_simple_query(self, simple_request):
         """Test simple query has low complexity."""
         estimator = ComplexityEstimator()
-        
+
         complexity = await estimator.estimate(simple_request)
         assert complexity.score < 0.3
 
@@ -64,7 +64,7 @@ class TestComplexityEstimator:
     async def test_complex_query(self, complex_request):
         """Test complex query has high complexity."""
         estimator = ComplexityEstimator()
-        
+
         complexity = await estimator.estimate(complex_request)
         assert complexity.score > 0.5
 
@@ -72,10 +72,10 @@ class TestComplexityEstimator:
     async def test_recommended_tier(self, simple_request, complex_request):
         """Test tier recommendations."""
         estimator = ComplexityEstimator()
-        
+
         simple_complexity = await estimator.estimate(simple_request)
         complex_complexity = await estimator.estimate(complex_request)
-        
+
         assert simple_complexity.recommended_tier == ModelTier.ECONOMY
         assert complex_complexity.recommended_tier in [ModelTier.STANDARD, ModelTier.PREMIUM]
 
@@ -88,9 +88,9 @@ class TestCostAwareRouter:
         """Test simple request routed to cheap model."""
         estimator = ComplexityEstimator()
         router = CostAwareRouter(sample_models, estimator, cost_weight=0.9)
-        
+
         decision = await router.route(simple_request)
-        
+
         assert decision.selected_model.id == "gpt-3.5"
 
     @pytest.mark.asyncio
@@ -98,9 +98,9 @@ class TestCostAwareRouter:
         """Test complex request routed to capable model."""
         estimator = ComplexityEstimator()
         router = CostAwareRouter(sample_models, estimator, cost_weight=0.5)
-        
+
         decision = await router.route(complex_request)
-        
+
         # Should prefer gpt-4 for complex tasks
         assert decision.estimated_cost > 0
         assert decision.estimated_latency_ms > 0
@@ -110,9 +110,9 @@ class TestCostAwareRouter:
         """Test fallback models included."""
         estimator = ComplexityEstimator()
         router = CostAwareRouter(sample_models, estimator)
-        
+
         decision = await router.route(simple_request)
-        
+
         assert len(decision.fallback_models) >= 0
 
 
@@ -123,11 +123,11 @@ class TestLoadBalancedRouter:
     async def test_round_robin(self, simple_request, sample_models):
         """Test round-robin load balancing."""
         router = LoadBalancedRouter(sample_models)
-        
+
         # Route multiple times
         decision1 = await router.route(simple_request)
         decision2 = await router.route(simple_request)
-        
+
         # Should alternate
         assert decision1.selected_model.id != decision2.selected_model.id
 

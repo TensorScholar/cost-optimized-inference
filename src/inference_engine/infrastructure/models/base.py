@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import List, AsyncIterator
+from collections.abc import AsyncIterator
+
 import structlog
 
 from ...domain.models.request import InferenceRequest
@@ -25,7 +26,7 @@ class AbstractModelBackend(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def infer_batch(self, requests: List[InferenceRequest]) -> List[InferenceResponse]:
+    async def infer_batch(self, requests: list[InferenceRequest]) -> list[InferenceResponse]:
         """
         Run inference on a batch of requests.
 
@@ -38,7 +39,7 @@ class AbstractModelBackend(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def stream(self, request: InferenceRequest) -> AsyncIterator[str]:
+    def stream(self, request: InferenceRequest) -> AsyncIterator[str]:
         """
         Stream inference tokens.
 
@@ -65,4 +66,3 @@ class AbstractModelBackend(ABC):
     def model_name(self) -> str:
         """Get model name."""
         raise NotImplementedError
-

@@ -1,9 +1,8 @@
 """Dependency injection for API endpoints."""
-from ...application.services.inference.inference_service import InferenceService
-from ...application.services.inference.batch_service import BatchService
 from ...application.services.cache.cache_service import CacheService
+from ...application.services.inference.batch_service import BatchService
+from ...application.services.inference.inference_service import InferenceService
 from ...application.services.routing.routing_service import RoutingService
-
 
 # Singleton service instances
 _inference_service: InferenceService | None = None
@@ -42,11 +41,11 @@ def get_routing_service() -> RoutingService:
     """Get or create routing service singleton."""
     global _routing_service
     if _routing_service is None:
-        from ...domain.routing.cost_aware import CostAwareRouter
-        from ...domain.routing.complexity import ComplexityEstimator
-        from ...domain.routing.load_balanced import LoadBalancedRouter
         from ...domain.models.routing import ModelConfig, ModelTier
-        
+        from ...domain.routing.complexity import ComplexityEstimator
+        from ...domain.routing.cost_aware import CostAwareRouter
+        from ...domain.routing.load_balanced import LoadBalancedRouter
+
         # Create mock models for now
         models = [
             ModelConfig(
@@ -66,16 +65,16 @@ def get_routing_service() -> RoutingService:
                 cost_per_1k_output_tokens=0.002,
             ),
         ]
-        
+
         complexity_estimator = ComplexityEstimator()
         cost_router = CostAwareRouter(models, complexity_estimator)
         load_router = LoadBalancedRouter(models)
-        
+
         routers = {
             "cost_optimal": cost_router,
             "round_robin": load_router,
         }
-        
+
         _routing_service = RoutingService(routers)
     return _routing_service
 

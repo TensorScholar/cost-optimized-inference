@@ -1,10 +1,7 @@
 """Model management API routes."""
-from fastapi import APIRouter, Depends
-from typing import List, Dict
-from pydantic import BaseModel
 
-from ..dependencies import get_routing_service
-from ....application.services.routing.routing_service import RoutingService
+from fastapi import APIRouter
+from pydantic import BaseModel
 
 router = APIRouter()
 
@@ -22,10 +19,8 @@ class ModelInfoDTO(BaseModel):
     current_load: float
 
 
-@router.get("/models", response_model=List[ModelInfoDTO])
-async def list_models(
-    routing_service: RoutingService = Depends(get_routing_service),
-) -> List[ModelInfoDTO]:
+@router.get("/models", response_model=list[ModelInfoDTO])
+async def list_models() -> list[ModelInfoDTO]:
     """List available models and their configurations."""
     # For now, return mock data
     # In production, this would query the model pool
@@ -55,4 +50,3 @@ async def list_models(
             current_load=0.0,
         ),
     ]
-

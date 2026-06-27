@@ -1,6 +1,6 @@
-from typing import Dict, Optional
-import structlog
+
 import numpy as np
+import structlog
 
 logger = structlog.get_logger()
 
@@ -13,12 +13,12 @@ class EmbeddingCache:
     """
 
     def __init__(self, max_size: int = 10000) -> None:
-        self.cache: Dict[str, np.ndarray] = {}
+        self.cache: dict[str, np.ndarray] = {}
         self.max_size = max_size
         self.hits = 0
         self.misses = 0
 
-    def get(self, text: str) -> Optional[np.ndarray]:
+    def get(self, text: str) -> np.ndarray | None:
         """Get cached embedding if available."""
         embedding = self.cache.get(text)
 

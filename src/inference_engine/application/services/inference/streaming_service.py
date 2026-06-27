@@ -1,7 +1,8 @@
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
+
 import structlog
 
-from ...dto.inference_dto import InferenceInputDTO, InferenceOutputDTO
+from ...dto.inference_dto import InferenceInputDTO
 from .inference_service import InferenceService
 
 logger = structlog.get_logger()

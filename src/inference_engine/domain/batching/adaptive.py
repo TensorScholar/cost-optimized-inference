@@ -1,27 +1,21 @@
-import asyncio
+from __future__ import annotations
+
 from collections import deque
-from datetime import datetime
+
 import structlog
-from typing import Optional
 
+from ...utils.time import utc_now
+from ..models.batch import BatchMetrics, BatchRequest, BatchStrategy
 from ..models.request import InferenceRequest, RequestPriority
-from ..models.batch import BatchRequest, BatchStrategy, BatchMetrics
 from .base import AbstractBatcher
-
 
 logger = structlog.get_logger()
 
 
 class AdaptiveBatcher(AbstractBatcher):
-    """
-    Adaptive batching that dynamically adjusts batch size based on:
-    1. Current queue depth
-    2. Recent latency measurements
-    3. System load
-    4. Request priority
-    """
+    """Small adaptive batcher used as a Phase 0 domain primitive."""
 
-    def __init__(self, strategy: BatchStrategy):
+    def __init__(self, strategy: BatchStrategy) -> None:
         self.strategy = strategy
         self.express_queue: deque[InferenceRequest] = deque()
         self.standard_queue: deque[InferenceRequest] = deque()
@@ -30,139 +24,94 @@ class AdaptiveBatcher(AbstractBatcher):
         self.recent_latencies: deque[int] = deque(maxlen=100)
         self.total_batches = 0
         self.total_requests = 0
-        self._running = False
 
     async def add_request(self, request: InferenceRequest) -> None:
         if request.priority == RequestPriority.EXPRESS:
             self.express_queue.append(request)
-        elif request.priority == RequestPriority.STANDARD:
-            self.standard_queue.append(request)
-        else:
+        elif request.priority == RequestPriority.BATCH:
             self.batch_queue.append(request)
-        logger.debug(
-            "request_queued",
-            request_id=str(request.id),
-            priority=request.priority.value,
-            queue_sizes={
-                "express": len(self.express_queue),
-                "standard": len(self.standard_queue),
-                "batch": len(self.batch_queue),
-            },
-        )
+        else:
+            self.standard_queue.append(request)
 
-    async def collect_batch(self) -> Optional[BatchRequest]:
-        if len(self.express_queue) >= 1:
-            return await self._collect_express_batch()
+    async def collect_batch(self) -> BatchRequest | None:
+        if self.express_queue:
+            return self._collect_express_batch()
         if len(self.standard_queue) >= self.current_batch_size:
-            return await self._collect_standard_batch()
+            return self._collect_standard_batch()
         if len(self.batch_queue) >= self.strategy.max_batch_size:
-            return await self._collect_batch_batch()
-        return await self._collect_mixed_batch()
+            return self._collect_background_batch()
+        return self._collect_timed_batch()
 
-    async def _collect_express_batch(self) -> BatchRequest:
-        requests = []
+    def _collect_express_batch(self) -> BatchRequest:
         max_size = min(4, len(self.express_queue))
-        for _ in range(max_size):
-            if self.express_queue:
-                requests.append(self.express_queue.popleft())
-        batch = BatchRequest(
+        requests = [self.express_queue.popleft() for _ in range(max_size)]
+        return BatchRequest(
             requests=requests,
-            strategy=BatchStrategy(
-                min_batch_size=1, max_batch_size=4, max_wait_ms=self.strategy.express_max_wait_ms
-            ),
+            strategy=BatchStrategy(min_batch_size=1, max_batch_size=4, max_wait_ms=10),
         )
-        logger.info("express_batch_collected", batch_id=str(batch.id), size=batch.size)
-        return batch
 
-    async def _collect_standard_batch(self) -> BatchRequest:
-        requests = []
+    def _collect_standard_batch(self) -> BatchRequest:
         target_size = self._calculate_optimal_batch_size()
-        for _ in range(min(target_size, len(self.standard_queue))):
-            requests.append(self.standard_queue.popleft())
-        batch = BatchRequest(requests=requests, strategy=self.strategy)
-        logger.info(
-            "standard_batch_collected",
-            batch_id=str(batch.id),
-            size=batch.size,
-            target_size=target_size,
-        )
-        return batch
+        requests = [
+            self.standard_queue.popleft()
+            for _ in range(min(target_size, len(self.standard_queue)))
+        ]
+        return BatchRequest(requests=requests, strategy=self.strategy)
 
-    async def _collect_batch_batch(self) -> BatchRequest:
-        requests = []
-        max_size = min(self.strategy.max_batch_size, len(self.batch_queue))
-        for _ in range(max_size):
-            requests.append(self.batch_queue.popleft())
-        batch = BatchRequest(requests=requests, strategy=self.strategy)
-        logger.info("batch_batch_collected", batch_id=str(batch.id), size=batch.size)
-        return batch
+    def _collect_background_batch(self) -> BatchRequest:
+        requests = [
+            self.batch_queue.popleft()
+            for _ in range(min(self.strategy.max_batch_size, len(self.batch_queue)))
+        ]
+        return BatchRequest(requests=requests, strategy=self.strategy)
 
-    async def _collect_mixed_batch(self) -> Optional[BatchRequest]:
-        requests = []
-        oldest_age_ms = self._get_oldest_request_age_ms()
-        if oldest_age_ms < self.strategy.max_wait_ms:
+    def _collect_timed_batch(self) -> BatchRequest | None:
+        if self._oldest_request_age_ms() < self.strategy.max_wait_ms:
             return None
         target_size = self._calculate_optimal_batch_size()
+        requests: list[InferenceRequest] = []
         while len(requests) < target_size and self.standard_queue:
             requests.append(self.standard_queue.popleft())
         while len(requests) < target_size and self.batch_queue:
             requests.append(self.batch_queue.popleft())
         if not requests:
             return None
-        batch = BatchRequest(requests=requests, strategy=self.strategy)
-        logger.info(
-            "mixed_batch_collected",
-            batch_id=str(batch.id),
-            size=batch.size,
-            oldest_age_ms=oldest_age_ms,
-        )
-        return batch
+        return BatchRequest(requests=requests, strategy=self.strategy)
 
     def _calculate_optimal_batch_size(self) -> int:
         if not self.recent_latencies:
-            return self.strategy.min_batch_size
+            return self.current_batch_size
         sorted_latencies = sorted(self.recent_latencies)
-        p95_index = int(len(sorted_latencies) * 0.95)
-        p95_index = min(max(p95_index, 0), len(sorted_latencies) - 1)
+        p95_index = min(len(sorted_latencies) - 1, int(len(sorted_latencies) * 0.95))
         p95_latency = sorted_latencies[p95_index]
-        target = self.strategy.target_latency_p95_ms
-        if p95_latency < target * 0.8:
-            self.current_batch_size = min(self.strategy.max_batch_size, int(self.current_batch_size * 1.2))
-        elif p95_latency > target:
-            self.current_batch_size = max(self.strategy.min_batch_size, int(self.current_batch_size * 0.8))
-        logger.debug(
-            "batch_size_adjusted",
-            current_size=self.current_batch_size,
-            p95_latency=p95_latency,
-            target_latency=target,
-        )
+        if p95_latency < self.strategy.target_latency_p95_ms * 0.8:
+            self.current_batch_size = min(
+                self.strategy.max_batch_size, max(self.current_batch_size + 1, int(self.current_batch_size * 1.2))
+            )
+        elif p95_latency > self.strategy.target_latency_p95_ms:
+            self.current_batch_size = max(
+                self.strategy.min_batch_size, int(self.current_batch_size * 0.8)
+            )
         return self.current_batch_size
 
-    def _get_oldest_request_age_ms(self) -> int:
-        oldest = None
-        for queue in [self.express_queue, self.standard_queue, self.batch_queue]:
-            if queue:
-                request = queue[0]
-                if oldest is None or request.timestamp < oldest.timestamp:
-                    oldest = request
-        if oldest is None:
+    def _oldest_request_age_ms(self) -> int:
+        candidates = [
+            queue[0]
+            for queue in (self.express_queue, self.standard_queue, self.batch_queue)
+            if queue
+        ]
+        if not candidates:
             return 0
-        age = (datetime.utcnow() - oldest.timestamp).total_seconds() * 1000
-        return int(age)
+        oldest = min(candidates, key=lambda request: request.timestamp)
+        return int((utc_now() - oldest.timestamp).total_seconds() * 1000)
 
     async def record_batch_metrics(self, metrics: BatchMetrics) -> None:
         self.recent_latencies.append(metrics.processing_time_ms)
         self.total_batches += 1
         self.total_requests += metrics.size
-        logger.info(
-            "batch_metrics_recorded",
-            batch_id=str(metrics.batch_id),
-            size=metrics.size,
-            processing_time_ms=metrics.processing_time_ms,
-            throughput=metrics.throughput_tokens_per_sec,
-        )
+        logger.debug("batch_metrics_recorded", batch_id=str(metrics.batch_id), size=metrics.size)
 
-    def get_queue_stats(self) -> dict:
+    def get_queue_stats(self) -> dict[str, int]:
         return {
             "express": len(self.express_queue),
             "standard": len(self.standard_queue),
@@ -172,5 +121,3 @@ class AdaptiveBatcher(AbstractBatcher):
             "total_batches": self.total_batches,
             "total_requests": self.total_requests,
         }
-
-

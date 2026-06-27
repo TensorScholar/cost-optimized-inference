@@ -1,10 +1,13 @@
-from typing import List, Tuple
-import numpy as np
+
+from collections.abc import Callable, Hashable
+from typing import TypeVar
+
+T = TypeVar("T")
 
 
 def greedy_batch_collection(
-    requests: List, target_size: int, max_wait_ms: int, current_age_ms: int
-) -> Tuple[List, bool]:
+    requests: list[T], target_size: int, max_wait_ms: int, current_age_ms: int
+) -> tuple[list[T], bool]:
     """
     Greedy batching algorithm: collect up to target size or until timeout.
 
@@ -36,8 +39,8 @@ def greedy_batch_collection(
 
 
 def affinity_batch_collection(
-    requests: List, target_size: int, affinity_key: callable
-) -> List:
+    requests: list[T], target_size: int, affinity_key: Callable[[T], Hashable]
+) -> list[T]:
     """
     Affinity-based batching: group requests sharing an affinity key.
 
@@ -53,7 +56,7 @@ def affinity_batch_collection(
         return []
 
     # Group by affinity
-    groups: dict = {}
+    groups: dict[Hashable, list[T]] = {}
     for req in requests:
         key = affinity_key(req)
         if key not in groups:
@@ -66,7 +69,7 @@ def affinity_batch_collection(
 
 
 def throughput_optimized_batching(
-    recent_latencies: List[float], current_batch_size: int, min_size: int, max_size: int
+    recent_latencies: list[float], current_batch_size: int, min_size: int, max_size: int
 ) -> int:
     """
     Adjust batch size to maximize throughput while maintaining latency.
@@ -103,4 +106,3 @@ def throughput_optimized_batching(
         new_size = current_batch_size
 
     return max(min_size, min(max_size, new_size))
-

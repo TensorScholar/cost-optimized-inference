@@ -1,12 +1,13 @@
 import asyncio
-from typing import Iterable, Awaitable, TypeVar, List
+from collections.abc import Awaitable, Iterable
+from typing import TypeVar
 
 T = TypeVar("T")
 
 
-async def gather_limited(coros: Iterable[Awaitable[T]], limit: int = 10) -> List[T]:
+async def gather_limited(coros: Iterable[Awaitable[T]], limit: int = 10) -> list[T]:
     semaphore = asyncio.Semaphore(limit)
-    results: List[T] = []
+    results: list[T] = []
 
     async def _wrap(coro: Awaitable[T]) -> None:
         async with semaphore:

@@ -1,9 +1,9 @@
 """Unit tests for caching strategies."""
 import pytest
 
-from inference_engine.domain.models.request import InferenceRequest, ModelParameters
-from inference_engine.domain.models.response import InferenceResponse, UsageMetrics, CacheInfo
 from inference_engine.domain.caching.exact import ExactCache
+from inference_engine.domain.models.request import InferenceRequest, ModelParameters
+from inference_engine.domain.models.response import CacheInfo, InferenceResponse, UsageMetrics
 
 
 @pytest.fixture
@@ -40,14 +40,14 @@ class TestExactCache:
     async def test_set_and_get(self, sample_request, sample_response):
         """Test setting and getting from cache."""
         cache = ExactCache(max_entries=1000)
-        
+
         # Set
         await cache.set(sample_request, sample_response)
-        
+
         # Get
         result = await cache.get(sample_request)
         assert result is not None
-        
+
         response, cache_info = result
         assert cache_info.hit is True
         assert response.text == sample_response.text
@@ -56,7 +56,7 @@ class TestExactCache:
     async def test_cache_miss(self, sample_request):
         """Test cache miss for non-existent entry."""
         cache = ExactCache()
-        
+
         result = await cache.get(sample_request)
         assert result is None
 
@@ -64,7 +64,7 @@ class TestExactCache:
     async def test_eviction(self):
         """Test LRU eviction when cache is full."""
         cache = ExactCache(max_entries=2)
-        
+
         # Add entries
         for i in range(3):
             req = InferenceRequest(
@@ -80,7 +80,7 @@ class TestExactCache:
                 latency_ms=10,
             )
             await cache.set(req, resp)
-        
+
         # Should have evicted oldest
         stats = cache.get_metrics()
         assert stats["cache_size"] == 2
@@ -89,16 +89,16 @@ class TestExactCache:
     async def test_invalidate_pattern(self, sample_request, sample_response):
         """Test cache invalidation by pattern."""
         cache = ExactCache()
-        
+
         await cache.set(sample_request, sample_response)
-        
+
         # Invalidate
         count = await cache.invalidate("France")
         assert count == 0
-        
+
         count = await cache.invalidate("2+2")
         assert count == 1
-        
+
         # Entry should be gone
         result = await cache.get(sample_request)
         assert result is None
@@ -106,7 +106,7 @@ class TestExactCache:
     def test_cache_metrics(self):
         """Test cache metrics tracking."""
         cache = ExactCache()
-        
+
         metrics = cache.get_metrics()
         assert "hits" in metrics
         assert "misses" in metrics

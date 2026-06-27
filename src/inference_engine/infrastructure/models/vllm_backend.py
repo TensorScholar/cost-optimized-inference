@@ -1,14 +1,15 @@
-from typing import List, AsyncIterator
+from collections.abc import AsyncIterator
+
 import structlog
 
 try:
     from vllm import LLM, SamplingParams
 except ImportError:
-    LLM = None  # type: ignore
-    SamplingParams = None  # type: ignore
+    LLM = None
+    SamplingParams = None
 
 from ...domain.models.request import InferenceRequest
-from ...domain.models.response import InferenceResponse, UsageMetrics, CacheInfo
+from ...domain.models.response import CacheInfo, InferenceResponse, UsageMetrics
 from .base import AbstractModelBackend
 
 logger = structlog.get_logger()
@@ -67,7 +68,7 @@ class vLLMBackend(AbstractModelBackend):
             latency_ms=elapsed_ms,
         )
 
-    async def infer_batch(self, requests: List[InferenceRequest]) -> List[InferenceResponse]:
+    async def infer_batch(self, requests: list[InferenceRequest]) -> list[InferenceResponse]:
         """Process batch efficiently with vLLM continuous batching."""
         import time
 
@@ -121,4 +122,3 @@ class vLLMBackend(AbstractModelBackend):
     async def health_check(self) -> bool:
         """Check vLLM backend health."""
         return self.llm is not None
-

@@ -1,9 +1,9 @@
 """Unit tests for cost management."""
 import pytest
 
-from inference_engine.domain.models.routing import ModelConfig, ModelTier
-from inference_engine.domain.models.cost import CostBreakdown
 from inference_engine.domain.cost.calculator import CostCalculator
+from inference_engine.domain.models.cost import CostBreakdown
+from inference_engine.domain.models.routing import ModelConfig, ModelTier
 
 
 @pytest.fixture
@@ -25,9 +25,9 @@ class TestCostCalculator:
     def test_calculate_cost(self, sample_model):
         """Test cost calculation."""
         calculator = CostCalculator()
-        
+
         cost = calculator.calculate(sample_model, input_tokens=100, output_tokens=50)
-        
+
         # 100 input tokens at $0.01/1k = $0.001
         # 50 output tokens at $0.02/1k = $0.001
         # Total = $0.002
@@ -37,7 +37,7 @@ class TestCostCalculator:
     def test_calculate_savings(self, sample_model):
         """Test savings calculation."""
         calculator = CostCalculator()
-        
+
         premium_model = ModelConfig(
             id="premium",
             name="Premium",
@@ -46,14 +46,14 @@ class TestCostCalculator:
             cost_per_1k_input_tokens=0.05,
             cost_per_1k_output_tokens=0.10,
         )
-        
+
         savings = calculator.calculate_savings(
             premium_model,
             sample_model,
             input_tokens=100,
             output_tokens=50,
         )
-        
+
         assert savings > 0
 
 
@@ -68,8 +68,8 @@ class TestCostBreakdown:
             cache_savings=30.0,
             optimization_savings=50.0,
         )
-        
-        assert breakdown.savings_rate == 0.5  # 80 savings / 120 total
+
+        assert breakdown.savings_rate == pytest.approx(80 / 120)
 
     def test_net_cost(self):
         """Test net cost calculation."""
@@ -79,6 +79,5 @@ class TestCostBreakdown:
             cache_savings=30.0,
             optimization_savings=50.0,
         )
-        
-        assert breakdown.net_cost == 40.0  # 120 total - 80 savings
 
+        assert breakdown.net_cost == 40.0  # 120 total - 80 savings

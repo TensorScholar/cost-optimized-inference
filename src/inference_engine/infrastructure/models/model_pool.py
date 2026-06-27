@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+
 import structlog
 
 from ...domain.models.routing import ModelConfig
@@ -15,8 +15,8 @@ class ModelPool:
     """
 
     def __init__(self) -> None:
-        self.backends: Dict[str, AbstractModelBackend] = {}
-        self.configs: Dict[str, ModelConfig] = {}
+        self.backends: dict[str, AbstractModelBackend] = {}
+        self.configs: dict[str, ModelConfig] = {}
 
     def register_backend(self, model_id: str, backend: AbstractModelBackend, config: ModelConfig) -> None:
         """Register a model backend."""
@@ -25,15 +25,15 @@ class ModelPool:
 
         logger.info("backend_registered", model_id=model_id, backend_type=type(backend).__name__)
 
-    def get_backend(self, model_id: str) -> Optional[AbstractModelBackend]:
+    def get_backend(self, model_id: str) -> AbstractModelBackend | None:
         """Get backend by model ID."""
         return self.backends.get(model_id)
 
-    def list_models(self) -> List[str]:
+    def list_models(self) -> list[str]:
         """List all registered model IDs."""
         return list(self.backends.keys())
 
-    async def health_check_all(self) -> Dict[str, bool]:
+    async def health_check_all(self) -> dict[str, bool]:
         """Check health of all backends."""
         results = {}
 

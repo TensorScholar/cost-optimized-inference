@@ -1,7 +1,6 @@
-from typing import List, Dict, Tuple
 import structlog
 
-from ..models.cost import CostMetrics, CostBreakdown
+from ..models.cost import CostMetrics
 
 logger = structlog.get_logger()
 
@@ -16,7 +15,7 @@ class CostOptimizer:
     def __init__(self) -> None:
         pass
 
-    def analyze_trends(self, metrics_list: List[CostMetrics]) -> Dict[str, float]:
+    def analyze_trends(self, metrics_list: list[CostMetrics]) -> dict[str, float]:
         """
         Analyze cost trends over time.
 
@@ -37,14 +36,14 @@ class CostOptimizer:
             "total_savings": sum(total_savings),
         }
 
-    def get_top_cost_drivers(self, metrics: CostMetrics, limit: int = 10) -> List[Dict[str, float]]:
+    def get_top_cost_drivers(self, metrics: CostMetrics, limit: int = 10) -> list[dict[str, object]]:
         """
         Identify top cost drivers.
 
         Returns:
             List of cost driver dictionaries
         """
-        drivers = []
+        drivers: list[dict[str, object]] = []
 
         # Top users
         for user, cost in sorted(metrics.cost_by_user.items(), key=lambda x: x[1], reverse=True)[:limit]:
@@ -58,9 +57,15 @@ class CostOptimizer:
         for model, cost in sorted(metrics.cost_by_model.items(), key=lambda x: x[1], reverse=True)[:limit]:
             drivers.append({"type": "model", "id": model, "cost": cost})
 
-        return sorted(drivers, key=lambda x: x["cost"], reverse=True)[:limit]
+        def cost_value(item: dict[str, object]) -> float:
+            value = item["cost"]
+            if isinstance(value, int | float):
+                return float(value)
+            raise TypeError(f"Cost driver has non-numeric cost: {value!r}")
 
-    def recommend_optimizations(self, metrics: CostMetrics) -> List[str]:
+        return sorted(drivers, key=cost_value, reverse=True)[:limit]
+
+    def recommend_optimizations(self, metrics: CostMetrics) -> list[str]:
         """
         Generate optimization recommendations based on cost analysis.
 
@@ -89,4 +94,3 @@ class CostOptimizer:
         )
 
         return recommendations
-

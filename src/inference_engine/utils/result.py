@@ -1,5 +1,6 @@
-from typing import TypeVar, Generic, Optional
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Generic, TypeVar
 
 T = TypeVar("T")
 E = TypeVar("E")
@@ -49,9 +50,8 @@ def unwrap_or(result: Result[T, E], default: T) -> T:
     return default
 
 
-def unwrap_or_else(result: Result[T, E], f: callable) -> T:
+def unwrap_or_else(result: Result[T, E], f: Callable[[], T]) -> T:
     """Unwrap a result or compute default via function if error."""
     if isinstance(result, Ok):
         return result.value
     return f()
-

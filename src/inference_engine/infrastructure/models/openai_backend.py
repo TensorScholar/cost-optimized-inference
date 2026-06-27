@@ -1,14 +1,14 @@
-from typing import List, AsyncIterator
+from collections.abc import AsyncIterator
+
 import structlog
 
 try:
     from openai import AsyncOpenAI
 except ImportError:
-    AsyncOpenAI = None  # type: ignore
+    AsyncOpenAI = None
 
 from ...domain.models.request import InferenceRequest
-from ...domain.models.response import InferenceResponse, UsageMetrics, CacheInfo
-from ...utils.text_utils import estimate_tokens
+from ...domain.models.response import CacheInfo, InferenceResponse, UsageMetrics
 from .base import AbstractModelBackend
 
 logger = structlog.get_logger()
@@ -63,7 +63,7 @@ class OpenAIBackend(AbstractModelBackend):
             latency_ms=elapsed_ms,
         )
 
-    async def infer_batch(self, requests: List[InferenceRequest]) -> List[InferenceResponse]:
+    async def infer_batch(self, requests: list[InferenceRequest]) -> list[InferenceResponse]:
         """Process batch sequentially (OpenAI doesn't support batching)."""
         results = []
         for req in requests:
@@ -96,4 +96,3 @@ class OpenAIBackend(AbstractModelBackend):
         except Exception as e:
             logger.error("openai_health_check_failed", error=str(e))
             return False
-

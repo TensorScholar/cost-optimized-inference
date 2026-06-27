@@ -1,141 +1,136 @@
-## Cost-Optimized Inference Engine
+# Honest LLM Inference Gateway
 
-Developers: Mohammad Atashi
+An SLO-aware LLM inference gateway and benchmark lab for proving real cost, latency, and quality tradeoffs in model routing.
 
-### Summary
+This project is intentionally narrow: it is not a fake "production platform" and it does not claim savings without evidence. The goal is to build the kind of infrastructure artifact that matters in real AI platform work: route requests by policy, record actual usage, compare against a baseline, and report whether the optimization was worth it.
 
-Intelligent LLM inference orchestration achieving up to 65% cost reduction with adaptive batching, multi-level caching, and cost-aware routing — while maintaining sub-100ms p95 latency for cached requests.
+## Why This Exists
 
-### Table of Contents
-- Overview
-- Key Features
-- Architecture (High-Level)
-- Quick Start
-- Configuration
-- API (Preview)
-- Benchmarks (Summary)
-- Roadmap
-- Contributing & License
+LLM systems often start with one model and one provider call. That is simple, but it becomes expensive and hard to reason about once traffic grows. Teams need to answer practical questions:
 
----
+- Which model should handle this request?
+- Is the request latency-sensitive, or can it use a cheaper async path?
+- Did routing save money without degrading quality?
+- Which feature, user, or workload is driving spend?
+- Are cost and latency claims backed by reproducible measurements?
 
-## Overview
-The engine is a production-grade middleware that sits between your apps and LLM providers (OpenAI, Anthropic, self-hosted vLLM, etc.). It reduces operational costs by batching similar requests, caching semantically similar responses, and routing to the cheapest capable model.
+This repository is being rebuilt around those questions.
 
-What makes it different:
-- Dynamic, SLA-aware batching (express/standard/batch lanes)
-- Semantic and prefix caching (not just exact matches)
-- Complexity-based model routing with fallbacks
-- Real-time cost attribution and metrics
+## Current Status
 
----
+**Phase 0 baseline repair is complete.**
 
-## Key Features
-- Adaptive Dynamic Batching: Self-tunes batch size based on p95 latency targets.
-- Multi-Level Caching: Exact, semantic (vector), and prefix/KV-cache reuse.
-- Cost-Aware Routing: Selects cheapest model capable of fulfilling the request.
-- Semantic Request Coalescing: Groups similar requests to maximize reuse.
-- Observability: Prometheus metrics, tracing hooks, and structured logs.
+The repository now has:
 
----
+- an importable Python package baseline;
+- strict local gates for lint, type checking, and tests;
+- early domain primitives for batching, caching, routing, and cost calculation;
+- architecture and benchmark planning docs under [docs/](./docs/README.md);
+- repo-level Codex guidance and review skills for keeping future work honest.
 
-## Architecture (High-Level)
+Not implemented yet:
+
+- real provider execution;
+- provider usage ledger;
+- policy router with budget enforcement;
+- benchmark reports with measured savings;
+- async batch lane;
+- prompt cache advisor.
+
+## What Makes It Different
+
+The project is designed around evidence, not dashboard theater.
+
+Every future optimization should produce:
+
+- a baseline comparison;
+- actual provider usage or clearly labeled estimates;
+- p50/p95 latency;
+- quality or correctness results;
+- route decision records;
+- a reproducible command.
+
+If a cost reduction cannot be reproduced from a benchmark report, it does not belong in the README.
+
+## Target Architecture
+
+```text
+Client
+  -> FastAPI Gateway
+  -> Request Normalizer
+  -> Policy Router
+  -> Execution Lane
+       -> Sync Provider Adapter
+       -> Async Batch Adapter
+       -> Local vLLM Adapter
+  -> Usage Ledger
+  -> Benchmark / Eval Reporter
 ```
-Client Apps → FastAPI Gateway → Intelligent Batching → Multi-Level Cache → Cost-Aware Router → LLM Backends
-                                                          │
-                                                          └── Metrics/Cost Attribution/Logging
-```
-- Batching: Express (<50ms), Standard (<200ms), Batch (best-effort)
-- Caches: Exact (Redis), Semantic (Vector index/FAISS), Prefix (KV reuse)
-- Routing: Complexity estimator + cost/latency/health signals + fallbacks
 
----
+Initial implementation stays small: FastAPI, typed domain models, SQLite or DuckDB for the ledger, pytest, ruff, mypy, and provider adapters only when they record real usage.
 
-## Quick Start
+## Development
 
-### Option 1: Docker Compose
+Create the local environment:
+
 ```bash
-# Clone
-git clone https://github.com/TensorScholar/cost-optimized-inference.git
-cd cost-optimized-inference
-
-# Run (uses defaults; edit .env when needed)
-docker-compose up -d
-
-# Check health
-curl http://localhost:8000/health
+python3 -m venv .venv
+.venv/bin/python -m pip install -e ".[dev]"
 ```
 
-### Option 2: Local Dev
+Run the verified gates:
+
 ```bash
-# Install (Poetry)
-poetry install
-
-# Run API
-authentication is not required for local dev
-make dev
-# or
-uvicorn inference_engine.adapters.api.app:app --reload --host 0.0.0.0 --port 8000
-
-# Open docs
-open http://localhost:8000/docs
+make check
 ```
 
----
+Equivalent explicit commands:
 
-## Configuration
-Environment (commonly used):
-```
-REDIS_URL=redis://localhost:6379
-OPENAI_API_KEY=...
-ANTHROPIC_API_KEY=...
-ROUTING_STRATEGY=cost_optimal   # cost_optimal | latency_optimal | balanced
-COST_WEIGHT=0.7                 # 0.0 (latency) → 1.0 (cost)
-```
-Defaults are managed via `src/inference_engine/config.py` (Pydantic settings).
-
----
-
-## API (Preview)
-- REST
-  - POST /v1/inference: submit a single prompt
-  - POST /v1/batch: submit multiple prompts
-  - GET /health: liveness check
-- WebSocket
-  - /v1/stream: streaming output (stub)
-
-Example request:
-```json
-POST /v1/inference
-{
-  "prompt": "Explain quantum computing simply",
-  "max_tokens": 200,
-  "temperature": 0.7,
-  "priority": "standard",
-  "use_cache": true
-}
+```bash
+.venv/bin/python -m ruff check src tests
+.venv/bin/python -m mypy src
+.venv/bin/python -m pytest
 ```
 
----
+Current baseline:
 
-## Benchmarks (Summary)
-- Throughput: up to 6–8x versus naive sequential
-- Latency: p95 < 100–200ms with caching + batching
-- Cost: up to ~65% reduction across common workloads
-
-Note: Results vary by traffic pattern, cacheability, and backend models.
-
----
+```text
+ruff:  all checks passed
+mypy:  no issues found in 70 source files
+pytest: 26 passed
+```
 
 ## Roadmap
-- Advanced prompt normalization and cache policies
-- Additional vector stores (Qdrant/Milvus) integrations
-- Expanded routing strategies and model pools
-- Richer dashboards and alerts (Grafana)
-- SDKs for more languages
 
----
+1. **Phase 1: Core request model and usage ledger**
+   Store request, route decision, usage, latency, and price-version records.
 
-## Contributing & License
-- Issues/PRs are welcome.
-- License: MIT (see LICENSE).
+2. **Phase 2: Real provider adapter**
+   Add one provider path with timeout, retry budget, cancellation, error taxonomy, and real usage extraction.
+
+3. **Phase 3: Policy router**
+   Route by cost, latency SLO, quality tier, deadline, and fallback constraints.
+
+4. **Phase 4: Benchmark harness**
+   Compare baseline versus optimized routing on replayable workloads.
+
+5. **Phase 5: Eval-aware routing**
+   Prevent cheaper routing from silently degrading answer quality.
+
+6. **Phase 6: Async batch lane and prompt-cache advisor**
+   Add real cost levers for non-urgent and repeated-prefix workloads.
+
+See [Implementation Roadmap](./docs/02_IMPLEMENTATION_ROADMAP.md) for acceptance criteria.
+
+## Documentation
+
+- [Strategy Brief](./docs/00_STRATEGY_BRIEF.md)
+- [Target Architecture](./docs/01_TARGET_ARCHITECTURE.md)
+- [Implementation Roadmap](./docs/02_IMPLEMENTATION_ROADMAP.md)
+- [Benchmark And Eval Plan](./docs/03_BENCHMARK_AND_EVAL_PLAN.md)
+- [Codex Quality System](./docs/04_CODEX_QUALITY_SYSTEM.md)
+
+## Principle
+
+Small, real, measurable infrastructure beats a large scaffold with fake production claims.
+

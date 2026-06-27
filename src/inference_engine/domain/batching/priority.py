@@ -1,10 +1,9 @@
-from typing import List
+
 import structlog
 
-from ..models.request import InferenceRequest, RequestPriority
 from ..models.batch import BatchRequest, BatchStrategy
+from ..models.request import InferenceRequest, RequestPriority
 from .base import AbstractBatcher
-
 
 logger = structlog.get_logger()
 
@@ -18,7 +17,7 @@ class PriorityBatcher(AbstractBatcher):
 
     def __init__(self, strategy: BatchStrategy) -> None:
         self.strategy = strategy
-        self.queues: dict[RequestPriority, List[InferenceRequest]] = {
+        self.queues: dict[RequestPriority, list[InferenceRequest]] = {
             RequestPriority.EXPRESS: [],
             RequestPriority.STANDARD: [],
             RequestPriority.BATCH: [],
@@ -43,7 +42,7 @@ class PriorityBatcher(AbstractBatcher):
         return None
 
     async def _collect_from_queue(
-        self, queue: List[InferenceRequest], priority: RequestPriority
+        self, queue: list[InferenceRequest], priority: RequestPriority
     ) -> BatchRequest:
         # Collect based on priority-specific limits
         if priority == RequestPriority.EXPRESS:

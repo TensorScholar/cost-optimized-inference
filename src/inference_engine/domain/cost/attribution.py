@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+
 import structlog
 
 from ..models.cost import CostAttribution, CostBreakdown
@@ -14,14 +14,14 @@ class CostAttributor:
     """
 
     def __init__(self) -> None:
-        self.attributions: Dict[str, List[CostAttribution]] = {}
+        self.attributions: dict[str, list[CostAttribution]] = {}
 
     def attribute(
         self,
         request_id: str,
-        user_id: Optional[str],
-        feature_name: Optional[str],
-        experiment_id: Optional[str],
+        user_id: str | None,
+        feature_name: str | None,
+        experiment_id: str | None,
         application: str,
         cost_breakdown: CostBreakdown,
         input_tokens: int,
@@ -67,7 +67,7 @@ class CostAttributor:
         """Get total costs for a user."""
         return sum(a.cost_breakdown.net_cost for a in self.attributions.get(user_id, []))
 
-    def get_feature_costs(self, feature_name: str) -> List[CostAttribution]:
+    def get_feature_costs(self, feature_name: str) -> list[CostAttribution]:
         """Get all attributions for a feature."""
         return [
             a for attributions in self.attributions.values() for a in attributions if a.feature_name == feature_name

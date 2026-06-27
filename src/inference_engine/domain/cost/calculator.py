@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+
 import structlog
 
 from ..models.routing import ModelConfig
@@ -9,7 +9,7 @@ logger = structlog.get_logger()
 class CostCalculator:
     """Calculates costs for LLM inference requests."""
 
-    def __init__(self, pricing_table: Optional[Dict[str, Dict[str, float]]] = None):
+    def __init__(self, pricing_table: dict[str, dict[str, float]] | None = None):
         self.pricing_table = pricing_table or self._default_pricing()
 
     def calculate(
@@ -57,7 +57,7 @@ class CostCalculator:
         alt_cost = self.calculate(alternative_model, input_tokens, output_tokens)
         return max(0, base_cost - alt_cost)
 
-    def _default_pricing(self) -> Dict[str, Dict[str, float]]:
+    def _default_pricing(self) -> dict[str, dict[str, float]]:
         """Default pricing table for common models."""
         return {
             "gpt-4": {"input": 0.03, "output": 0.06},

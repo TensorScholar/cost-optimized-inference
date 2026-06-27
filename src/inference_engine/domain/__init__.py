@@ -1,3 +1,2 @@
-__all__ = []
-
+"""Domain primitives for the inference gateway."""
 

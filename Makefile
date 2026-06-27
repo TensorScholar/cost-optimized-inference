@@ -1,18 +1,14 @@
-.PHONY: run dev test format lint
+PYTHON ?= .venv/bin/python
 
-run:
-	uvicorn inference_engine.adapters.api.app:app --host 0.0.0.0 --port 8000
-
-dev:
-	uvicorn inference_engine.adapters.api.app:app --reload --host 0.0.0.0 --port 8000
+.PHONY: test lint typecheck check
 
 test:
-	pytest -q
-
-format:
-	black src tests
-	ruff check --fix src tests
+	$(PYTHON) -m pytest
 
 lint:
-	ruff check src tests
-	mypy src
+	$(PYTHON) -m ruff check src tests
+
+typecheck:
+	$(PYTHON) -m mypy src
+
+check: lint typecheck test

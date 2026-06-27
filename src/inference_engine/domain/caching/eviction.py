@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any
-from datetime import datetime
+
 import structlog
 
+from ...utils.time import utc_now
 from ..models.cache import CacheEntry
 
 logger = structlog.get_logger()
@@ -17,7 +17,7 @@ class EvictionPolicy(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def select_to_evict(self, entries: List[CacheEntry]) -> CacheEntry:
+    def select_to_evict(self, entries: list[CacheEntry]) -> CacheEntry:
         """Select entry to evict from candidates."""
         raise NotImplementedError
 
@@ -25,10 +25,10 @@ class EvictionPolicy(ABC):
 class LRUEvictionPolicy(EvictionPolicy):
     """Least Recently Used eviction policy."""
 
-    def should_evict(self, entry: CacheEntry) -> bool:
+    def should_evict(self, _entry: CacheEntry) -> bool:
         return False  # LRU evicts on-demand, not by checking individual entries
 
-    def select_to_evict(self, entries: List[CacheEntry]) -> CacheEntry:
+    def select_to_evict(self, entries: list[CacheEntry]) -> CacheEntry:
         if not entries:
             raise ValueError("Cannot evict from empty list")
 
@@ -40,10 +40,10 @@ class LRUEvictionPolicy(EvictionPolicy):
 class LFUEvictionPolicy(EvictionPolicy):
     """Least Frequently Used eviction policy."""
 
-    def should_evict(self, entry: CacheEntry) -> bool:
+    def should_evict(self, _entry: CacheEntry) -> bool:
         return False
 
-    def select_to_evict(self, entries: List[CacheEntry]) -> CacheEntry:
+    def select_to_evict(self, entries: list[CacheEntry]) -> CacheEntry:
         if not entries:
             raise ValueError("Cannot evict from empty list")
 
@@ -59,10 +59,10 @@ class TTL_EvictionPolicy(EvictionPolicy):
         if entry.ttl_seconds is None:
             return False
 
-        age = (datetime.utcnow() - entry.created_at).total_seconds()
+        age = (utc_now() - entry.created_at).total_seconds()
         return age > entry.ttl_seconds
 
-    def select_to_evict(self, entries: List[CacheEntry]) -> CacheEntry:
+    def select_to_evict(self, entries: list[CacheEntry]) -> CacheEntry:
         if not entries:
             raise ValueError("Cannot evict from empty list")
 
@@ -81,10 +81,10 @@ class TTL_EvictionPolicy(EvictionPolicy):
 class CostAwareEvictionPolicy(EvictionPolicy):
     """Evict based on cost-benefit ratio."""
 
-    def should_evict(self, entry: CacheEntry) -> bool:
+    def should_evict(self, _entry: CacheEntry) -> bool:
         return False
 
-    def select_to_evict(self, entries: List[CacheEntry]) -> CacheEntry:
+    def select_to_evict(self, entries: list[CacheEntry]) -> CacheEntry:
         if not entries:
             raise ValueError("Cannot evict from empty list")
 
@@ -100,4 +100,3 @@ class CostAwareEvictionPolicy(EvictionPolicy):
         worst = min(entries, key=score)
         logger.debug("cost_aware_eviction", entry_id=str(worst.id), score=score(worst))
         return worst
-

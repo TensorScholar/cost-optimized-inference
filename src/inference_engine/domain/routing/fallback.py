@@ -1,9 +1,7 @@
-from typing import List, Optional
+
 import structlog
 
-from ..models.request import InferenceRequest
-from ..models.routing import ModelConfig, RoutingDecision
-
+from ..models.routing import ModelConfig
 
 logger = structlog.get_logger()
 
@@ -16,14 +14,14 @@ class FallbackChain:
     """
 
     def __init__(
-        self, primary: ModelConfig, fallbacks: List[ModelConfig], max_attempts: int = 3
+        self, primary: ModelConfig, fallbacks: list[ModelConfig], max_attempts: int = 3
     ):
         self.primary = primary
         self.fallbacks = fallbacks
         self.max_attempts = max_attempts
         self.attempt_count = 0
 
-    def get_next_model(self) -> Optional[ModelConfig]:
+    def get_next_model(self) -> ModelConfig | None:
         """Get next model in fallback chain."""
         if self.attempt_count >= self.max_attempts:
             return None

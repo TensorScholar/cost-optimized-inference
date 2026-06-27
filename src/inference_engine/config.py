@@ -1,4 +1,4 @@
-from typing import Optional
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,10 +12,10 @@ class Settings(BaseSettings):
     redis_max_connections: int = 50
 
     # Models
-    openai_api_key: Optional[str] = None
-    anthropic_api_key: Optional[str] = None
-    vllm_model_path: Optional[str] = None
-    tgi_base_url: Optional[str] = None
+    openai_api_key: str | None = None
+    anthropic_api_key: str | None = None
+    vllm_model_path: str | None = None
+    tgi_base_url: str | None = None
 
     # Batching
     batch_min_size: int = 4

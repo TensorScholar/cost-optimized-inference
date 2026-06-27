@@ -1,19 +1,16 @@
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
-import structlog
-
+from ...utils.time import utc_now
 from ..models.cache import PrefixCacheEntry
+from ..models.request import InferenceRequest
+from ..models.response import CacheInfo, InferenceResponse
 from .base import AbstractCache
 
 
-logger = structlog.get_logger()
-
-
 class PrefixCache(AbstractCache):
-    """Cache for common prompt prefixes to enable KV-cache reuse."""
+    """Prefix metadata cache for future prompt/KV-cache work."""
 
     def __init__(self, max_entries: int = 1000) -> None:
         self.max_entries = max_entries
@@ -21,69 +18,56 @@ class PrefixCache(AbstractCache):
         self.hits = 0
         self.misses = 0
 
-    async def get_prefix(self, text: str) -> Optional[PrefixCacheEntry]:
-        for prefix_hash, entry in self.prefix_cache.items():
+    async def get_prefix(self, text: str) -> PrefixCacheEntry | None:
+        for entry in self.prefix_cache.values():
             if text.startswith(entry.prefix_text):
-                object.__setattr__(entry, "last_used", datetime.utcnow())
+                object.__setattr__(entry, "last_used", utc_now())
                 object.__setattr__(entry, "usage_count", entry.usage_count + 1)
                 self.hits += 1
-                logger.debug(
-                    "prefix_cache_hit", prefix_hash=prefix_hash, prefix_length=entry.prefix_length, usage_count=entry.usage_count
-                )
                 return entry
         self.misses += 1
         return None
 
-    async def set_prefix(self, prefix_text: str, kv_states: Optional[Any] = None) -> None:
+    async def set_prefix(self, prefix_text: str, kv_states: Any | None = None) -> None:
         import hashlib
 
         prefix_hash = hashlib.sha256(prefix_text.encode()).hexdigest()[:16]
-        entry = PrefixCacheEntry(
+        self.prefix_cache[prefix_hash] = PrefixCacheEntry(
             prefix_hash=prefix_hash,
             prefix_text=prefix_text,
             prefix_length=len(prefix_text),
             kv_states=kv_states,
-            tokens_saved_per_use=len(prefix_text) // 4,
+            tokens_saved_per_use=max(len(prefix_text) // 4, 1),
         )
-        self.prefix_cache[prefix_hash] = entry
-        logger.debug("prefix_cached", prefix_hash=prefix_hash, prefix_length=entry.prefix_length)
         if len(self.prefix_cache) > self.max_entries:
             self._evict_lfu()
 
     def _evict_lfu(self) -> None:
-        if not self.prefix_cache:
-            return
-        lfu_prefix_hash = min(self.prefix_cache.keys(), key=lambda k: self.prefix_cache[k].usage_count)
-        del self.prefix_cache[lfu_prefix_hash]
-        logger.debug("prefix_evicted", prefix_hash=lfu_prefix_hash)
+        lfu_key = min(self.prefix_cache, key=lambda key: self.prefix_cache[key].usage_count)
+        del self.prefix_cache[lfu_key]
 
-    # AbstractCache interface (no-op implementations for compatibility)
-    async def get(self, request):  # type: ignore[override]
+    async def get(self, _request: InferenceRequest) -> tuple[InferenceResponse, CacheInfo] | None:
         return None
 
-    async def set(self, request, response):  # type: ignore[override]
+    async def set(self, _request: InferenceRequest, _response: InferenceResponse) -> None:
         return None
 
-    async def invalidate(self, pattern: Optional[str] = None) -> int:  # type: ignore[override]
+    async def invalidate(self, pattern: str | None = None) -> int:
         if pattern is None:
             count = len(self.prefix_cache)
             self.prefix_cache.clear()
             return count
-        to_remove = [k for k, v in self.prefix_cache.items() if pattern in v.prefix_text]
-        for k in to_remove:
-            del self.prefix_cache[k]
-        return len(to_remove)
+        keys = [key for key, entry in self.prefix_cache.items() if pattern in entry.prefix_text]
+        for key in keys:
+            del self.prefix_cache[key]
+        return len(keys)
 
-    def get_metrics(self) -> dict:  # type: ignore[override]
-        total_lookups = self.hits + self.misses
-        hit_rate = self.hits / total_lookups if total_lookups > 0 else 0.0
-        total_tokens_saved = sum(e.total_tokens_saved for e in self.prefix_cache.values())
+    def get_metrics(self) -> dict[str, object]:
+        total = self.hits + self.misses
         return {
             "cache_size": len(self.prefix_cache),
             "hits": self.hits,
             "misses": self.misses,
-            "hit_rate": hit_rate,
-            "total_tokens_saved": total_tokens_saved,
+            "hit_rate": self.hits / total if total else 0.0,
+            "total_tokens_saved": sum(entry.total_tokens_saved for entry in self.prefix_cache.values()),
         }
-
-

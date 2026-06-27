@@ -10,7 +10,7 @@ class AdaptiveTuner:
     Monitors metrics and adjusts batching, caching, routing parameters.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         pass
 
     async def tune_batching(self) -> None:
@@ -24,4 +24,3 @@ class AdaptiveTuner:
     async def tune_routing(self) -> None:
         """Adjust routing parameters based on cost/latency tradeoffs."""
         logger.info("tuning_routing")
-

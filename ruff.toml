@@ -1,5 +1,7 @@
 target-version = "py311"
 line-length = 100
+
+[lint]
 select = [
     "E",   # pycodestyle errors
     "W",   # pycodestyle warnings
@@ -34,4 +36,3 @@ known-first-party = ["inference_engine"]
 
 [lint.per-file-ignores]
 "tests/*" = ["ARG", "S101"]
-
