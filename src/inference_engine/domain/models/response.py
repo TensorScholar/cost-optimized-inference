@@ -49,6 +49,8 @@ class InferenceResponse:
     queue_time_ms: int = 0
     inference_time_ms: int = 0
     postprocess_time_ms: int = 0
+    provider_attempt_count: int = 1
+    provider_retry_count: int = 0
     timestamp: datetime = field(default_factory=utc_now)
     id: UUID = field(default_factory=uuid4)
 

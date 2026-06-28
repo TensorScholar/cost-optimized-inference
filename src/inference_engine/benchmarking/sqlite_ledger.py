@@ -242,6 +242,8 @@ class SQLiteBenchmarkLedger:
         raw.setdefault("model_distribution", {})
         raw.setdefault("route_reason_distribution", {})
         raw.setdefault("observed_latency_ms_by_model", {})
+        raw.setdefault("provider_attempt_count", raw.get("request_count", 0))
+        raw.setdefault("provider_retry_count", 0)
         raw.setdefault("quality_count", 0)
         raw.setdefault("quality_pass_count", 0)
         raw.setdefault("quality_pass_rate", None)

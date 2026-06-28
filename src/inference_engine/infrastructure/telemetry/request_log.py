@@ -33,6 +33,8 @@ class RequestTrace:
     quality_score: float | None = None
     quality_reason: str | None = None
     eval_type: str | None = None
+    provider_attempt_count: int = 1
+    provider_retry_count: int = 0
 
     @classmethod
     def from_response(
@@ -56,6 +58,8 @@ class RequestTrace:
             error_type=None,
             error_message=None,
             timestamp=response.timestamp.isoformat(),
+            provider_attempt_count=response.provider_attempt_count,
+            provider_retry_count=response.provider_retry_count,
         )
 
     @classmethod
@@ -83,6 +87,8 @@ class RequestTrace:
             error_type=error.error_type.value,
             error_message=error.message,
             timestamp=utc_now().isoformat(),
+            provider_attempt_count=error.provider_attempt_count,
+            provider_retry_count=error.provider_retry_count,
         )
 
 

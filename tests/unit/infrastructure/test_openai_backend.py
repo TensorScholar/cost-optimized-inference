@@ -157,6 +157,8 @@ async def test_openai_backend_sends_real_chat_completion_shape() -> None:
     assert client.calls[0]["max_tokens"] == 32
     assert response.text == "hello"
     assert response.usage.cost_usd == pytest.approx(0.002)
+    assert response.provider_attempt_count == 1
+    assert response.provider_retry_count == 0
 
 
 @pytest.mark.asyncio
@@ -174,6 +176,8 @@ async def test_openai_backend_raises_when_usage_missing() -> None:
 
     assert exc_info.value.error_type == ProviderErrorType.MISSING_USAGE
     assert exc_info.value.retryable is False
+    assert exc_info.value.provider_attempt_count == 1
+    assert exc_info.value.provider_retry_count == 0
 
 
 @pytest.mark.asyncio
@@ -193,6 +197,8 @@ async def test_openai_backend_retries_retryable_errors() -> None:
 
     assert response.text == "hello"
     assert len(FakeOpenAIClient.instances[0].calls) == 2
+    assert response.provider_attempt_count == 2
+    assert response.provider_retry_count == 1
 
 
 @pytest.mark.asyncio
@@ -210,3 +216,27 @@ async def test_openai_backend_does_not_retry_invalid_request() -> None:
 
     assert exc_info.value.error_type == ProviderErrorType.INVALID_REQUEST
     assert len(FakeOpenAIClient.instances[0].calls) == 1
+    assert exc_info.value.provider_attempt_count == 1
+    assert exc_info.value.provider_retry_count == 0
+
+
+@pytest.mark.asyncio
+async def test_openai_backend_records_exhausted_retry_attempts() -> None:
+    FakeOpenAIClient.queued_results = [
+        FakeStatusError(429),
+        FakeStatusError(429),
+    ]
+    backend = OpenAIBackend(
+        api_key="test-key",
+        model_name="test-model",
+        retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=0),
+        cost_calculator=_calculator(),
+    )
+
+    with pytest.raises(ProviderError) as exc_info:
+        await backend.infer(InferenceRequest(prompt="Hello"))
+
+    assert exc_info.value.error_type == ProviderErrorType.RATE_LIMIT
+    assert len(FakeOpenAIClient.instances[0].calls) == 2
+    assert exc_info.value.provider_attempt_count == 2
+    assert exc_info.value.provider_retry_count == 1

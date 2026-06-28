@@ -31,6 +31,8 @@ def test_jsonl_request_log_round_trips_success_trace(tmp_path) -> None:
         ),
         cache_info=CacheInfo(hit=False),
         latency_ms=123,
+        provider_attempt_count=3,
+        provider_retry_count=2,
     )
     request_log = JsonlRequestLog(tmp_path / "ledger.jsonl")
 
@@ -42,6 +44,8 @@ def test_jsonl_request_log_round_trips_success_trace(tmp_path) -> None:
     assert traces[0].model == "test-model"
     assert traces[0].estimated_cost_usd == 0.00002
     assert traces[0].error_type is None
+    assert traces[0].provider_attempt_count == 3
+    assert traces[0].provider_retry_count == 2
 
 
 def test_jsonl_request_log_round_trips_error_trace(tmp_path) -> None:
@@ -53,6 +57,8 @@ def test_jsonl_request_log_round_trips_error_trace(tmp_path) -> None:
         provider="openai-compatible",
         retryable=True,
         status_code=429,
+        provider_attempt_count=2,
+        provider_retry_count=1,
     )
 
     request_log.append(
@@ -71,6 +77,8 @@ def test_jsonl_request_log_round_trips_error_trace(tmp_path) -> None:
     assert traces[0].latency_ms == 42
     assert traces[0].error_type == "rate_limit"
     assert traces[0].estimated_cost_usd == 0.0
+    assert traces[0].provider_attempt_count == 2
+    assert traces[0].provider_retry_count == 1
 
 
 def test_jsonl_route_log_round_trips_route_trace(tmp_path) -> None:

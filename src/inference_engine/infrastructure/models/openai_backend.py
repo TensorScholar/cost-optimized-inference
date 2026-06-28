@@ -1,5 +1,5 @@
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from time import perf_counter
 from typing import Any
 
@@ -31,6 +31,14 @@ class RetryPolicy:
             raise ValueError("max_attempts must be at least 1")
         if self.backoff_seconds < 0:
             raise ValueError("backoff_seconds must be non-negative")
+
+
+@dataclass(frozen=True)
+class ProviderCallResult:
+    """Provider response plus local retry-loop telemetry."""
+
+    response: Any
+    attempt_count: int
 
 
 class OpenAIBackend(AbstractModelBackend):
@@ -68,13 +76,18 @@ class OpenAIBackend(AbstractModelBackend):
         start = perf_counter()
 
         messages = request.messages or [{"role": "user", "content": request.prompt}]
-        response = await self._create_completion(messages, request)
+        call_result = await self._create_completion(messages, request)
+        response = call_result.response
 
         elapsed_ms = int((perf_counter() - start) * 1000)
         completion = response.choices[0].message.content or ""
         usage = response.usage
         if usage is None:
-            raise missing_usage_error(self.model_name)
+            raise replace(
+                missing_usage_error(self.model_name),
+                provider_attempt_count=call_result.attempt_count,
+                provider_retry_count=max(call_result.attempt_count - 1, 0),
+            )
 
         return InferenceResponse(
             request_id=request.id,
@@ -96,6 +109,8 @@ class OpenAIBackend(AbstractModelBackend):
             cache_info=CacheInfo(hit=False),
             latency_ms=elapsed_ms,
             inference_time_ms=elapsed_ms,
+            provider_attempt_count=call_result.attempt_count,
+            provider_retry_count=max(call_result.attempt_count - 1, 0),
         )
 
     async def infer_batch(self, requests: list[InferenceRequest]) -> list[InferenceResponse]:
@@ -109,7 +124,8 @@ class OpenAIBackend(AbstractModelBackend):
         """Stream tokens from OpenAI."""
         messages = request.messages or [{"role": "user", "content": request.prompt}]
 
-        stream = await self._create_completion(messages, request, stream=True)
+        call_result = await self._create_completion(messages, request, stream=True)
+        stream = call_result.response
         async for chunk in stream:
             if chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
@@ -133,13 +149,13 @@ class OpenAIBackend(AbstractModelBackend):
         request: InferenceRequest,
         *,
         stream: bool = False,
-    ) -> Any:
+    ) -> ProviderCallResult:
         import asyncio
 
         last_error: ProviderError | None = None
         for attempt in range(1, self.retry_policy.max_attempts + 1):
             try:
-                return await self.client.chat.completions.create(
+                response = await self.client.chat.completions.create(
                     model=self.model_name,
                     messages=messages,
                     max_tokens=request.parameters.max_tokens,
@@ -150,10 +166,16 @@ class OpenAIBackend(AbstractModelBackend):
                     stop=request.parameters.stop_sequences or None,
                     stream=stream,
                 )
+                return ProviderCallResult(response=response, attempt_count=attempt)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
                 provider_error = classify_openai_error(exc)
+                provider_error = replace(
+                    provider_error,
+                    provider_attempt_count=attempt,
+                    provider_retry_count=max(attempt - 1, 0),
+                )
                 last_error = provider_error
                 if not provider_error.retryable or attempt >= self.retry_policy.max_attempts:
                     raise provider_error from exc

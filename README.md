@@ -26,6 +26,7 @@ The repository now has:
 - strict local gates for lint, type checking, and tests;
 - early domain primitives for batching, caching, routing, and cost calculation;
 - an OpenAI-compatible provider adapter with timeout configuration, bounded retries, cancellation propagation, normalized provider errors, usage extraction, and real cost accounting;
+- provider retry telemetry recorded in request traces and benchmark summaries;
 - a versioned pricing table for supported model cost estimates;
 - an append-only JSONL request ledger for local smoke and benchmark runs;
 - a local SQLite benchmark ledger that stores run summaries and request traces by `run_id`;
@@ -46,6 +47,7 @@ Not implemented yet:
 
 - provider usage storage in SQLite or DuckDB;
 - deadline-aware fallback policy constraints and observed-profile adaptation;
+- committed real benchmark artifacts from an API-key run;
 - published measured savings reports;
 - broad semantic quality evaluation beyond deterministic validators;
 - async batch lane;

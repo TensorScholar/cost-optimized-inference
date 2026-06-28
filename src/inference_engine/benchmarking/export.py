@@ -57,6 +57,8 @@ def export_run_markdown(
         f"- Completion tokens: {report.completion_tokens}",
         f"- Total tokens: {report.total_tokens}",
         f"- Estimated cost: ${report.estimated_cost_usd:.8f}",
+        f"- Provider attempts: {report.provider_attempt_count}",
+        f"- Provider retries: {report.provider_retry_count}",
         f"- Quality pass rate: {_format_optional_rate(report.quality_pass_rate)}",
         f"- Quality score average: {_format_optional_float(report.quality_score_avg)}",
         f"- Route decisions: {report.route_count}",

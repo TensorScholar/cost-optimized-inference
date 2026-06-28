@@ -182,6 +182,8 @@ async def _run(args: argparse.Namespace) -> int:
                 error_type="budget_violation",
                 error_message=exc.message,
                 timestamp=route_trace.timestamp,
+                provider_attempt_count=0,
+                provider_retry_count=0,
             )
         except ProviderError as exc:
             trace = RequestTrace.from_error(

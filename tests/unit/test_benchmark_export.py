@@ -29,6 +29,8 @@ def _trace() -> RequestTrace:
         quality_score=1.0,
         quality_reason="passed",
         eval_type="exact_match",
+        provider_attempt_count=2,
+        provider_retry_count=1,
     )
 
 
@@ -99,6 +101,8 @@ def test_export_run_markdown_writes_summary(tmp_path) -> None:
     assert "## Model Distribution" in raw
     assert "## Observed Latency By Model" in raw
     assert "## Route Reason Distribution" in raw
+    assert "- Provider attempts: 2" in raw
+    assert "- Provider retries: 1" in raw
     assert "## Route Decisions" in raw
     assert "## Limitations" in raw
 

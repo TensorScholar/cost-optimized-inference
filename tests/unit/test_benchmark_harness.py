@@ -25,6 +25,8 @@ def _trace(
     quality_passed: bool | None = True,
     quality_score: float | None = 1.0,
     error_type: str | None = None,
+    provider_attempt_count: int = 1,
+    provider_retry_count: int = 0,
 ) -> RequestTrace:
     failed = error_type is not None
     return RequestTrace(
@@ -45,6 +47,8 @@ def _trace(
         quality_score=None if failed else quality_score,
         quality_reason=None if failed else "passed",
         eval_type=None if failed else "exact_match",
+        provider_attempt_count=provider_attempt_count,
+        provider_retry_count=provider_retry_count,
     )
 
 
@@ -87,7 +91,7 @@ def test_load_workload_rejects_invalid_eval(tmp_path) -> None:
 def test_summarize_traces_reports_latency_tokens_cost_failures_and_quality(tmp_path) -> None:
     traces = [
         _trace("1", latency_ms=100, estimated_cost_usd=0.01),
-        _trace("2", latency_ms=300, error_type="rate_limit"),
+        _trace("2", latency_ms=300, error_type="rate_limit", provider_attempt_count=2, provider_retry_count=1),
     ]
 
     report = summarize_traces(
@@ -108,6 +112,8 @@ def test_summarize_traces_reports_latency_tokens_cost_failures_and_quality(tmp_p
     assert report.prompt_tokens == 10
     assert report.completion_tokens == 5
     assert report.estimated_cost_usd == 0.01
+    assert report.provider_attempt_count == 3
+    assert report.provider_retry_count == 1
     assert report.model_distribution == {"test-model": 1}
     assert report.observed_latency_ms_by_model == {"test-model": {"count": 1, "p50": 100, "p95": 100}}
     assert report.route_reason_distribution == {}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from uuid import uuid4
 
 import pytest
@@ -97,7 +98,11 @@ async def test_benchmark_budget_violation_skips_provider_call(
     exit_code = await benchmark_script._run(args)
 
     assert exit_code == 1
-    assert "budget_violation" in (tmp_path / "ledger.jsonl").read_text(encoding="utf-8")
+    ledger_raw = (tmp_path / "ledger.jsonl").read_text(encoding="utf-8")
+    ledger_row = json.loads(ledger_raw)
+    assert ledger_row["error_type"] == "budget_violation"
+    assert ledger_row["provider_attempt_count"] == 0
+    assert ledger_row["provider_retry_count"] == 0
     assert "fake expensive route" in (tmp_path / "routes.jsonl").read_text(encoding="utf-8")
 
 

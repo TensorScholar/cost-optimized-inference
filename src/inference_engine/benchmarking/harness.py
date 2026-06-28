@@ -38,6 +38,8 @@ class BenchmarkReport:
     completion_tokens: int
     total_tokens: int
     estimated_cost_usd: float
+    provider_attempt_count: int
+    provider_retry_count: int
     route_count: int
     budget_violation_count: int
     model_distribution: dict[str, int]
@@ -137,6 +139,8 @@ def summarize_traces(
         completion_tokens=sum(trace.completion_tokens for trace in success_traces),
         total_tokens=sum(trace.total_tokens for trace in success_traces),
         estimated_cost_usd=sum(trace.estimated_cost_usd for trace in success_traces),
+        provider_attempt_count=sum(trace.provider_attempt_count for trace in traces),
+        provider_retry_count=sum(trace.provider_retry_count for trace in traces),
         route_count=len(routes),
         budget_violation_count=sum(1 for route in routes if route.budget_violation),
         model_distribution=_count_by_model(success_traces),

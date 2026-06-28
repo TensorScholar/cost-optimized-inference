@@ -26,6 +26,8 @@ class ProviderError(Exception):
     retryable: bool
     status_code: int | None = None
     cause: Exception | None = None
+    provider_attempt_count: int = 1
+    provider_retry_count: int = 0
 
     def __str__(self) -> str:
         return self.message
