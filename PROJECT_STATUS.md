@@ -14,15 +14,16 @@ The previous status language claimed production readiness and complete infrastru
 - Cost accounting uses a versioned model pricing table and fails on unknown pricing instead of inventing a value.
 - Request traces can be appended to a local JSONL ledger.
 - `inference-smoke` can make one real provider call when `OPENAI_API_KEY` is set.
-- `scripts/run_benchmark.py` can replay `benchmarks/workloads/smoke.jsonl` and write a JSON report.
+- `scripts/run_benchmark.py run` can replay `benchmarks/workloads/smoke.jsonl`, write a JSON report, and store run data in a local SQLite ledger.
+- `scripts/run_benchmark.py compare` can compare two stored run summaries from the SQLite ledger.
 - Deterministic `single_model` and `rule_based` baseline routing modes are implemented for future comparisons.
 - Local `.venv` gates pass for tests, lint, typecheck, and import smoke.
 
 ## What Is Not Implemented Yet
 
-- SQLite or DuckDB provider usage ledger.
 - Policy router with budget enforcement and observed latency profiles.
-- Baseline-vs-candidate savings reports with real run artifacts.
+- Deterministic quality checks for baseline-vs-candidate reports.
+- Published baseline-vs-candidate savings reports with real run artifacts.
 - Eval-aware routing.
 - Async batch lane.
 - Prompt cache advisor.
@@ -41,8 +42,8 @@ The previous status language claimed production readiness and complete infrastru
 ## Current Verification
 
 - `.venv/bin/python -m ruff check src tests`: passed.
-- `.venv/bin/python -m mypy src`: passed, 78 source files.
-- `.venv/bin/python -m pytest`: passed, 43 tests.
+- `.venv/bin/python -m mypy src`: passed, 79 source files.
+- `.venv/bin/python -m pytest`: passed, 50 tests.
 - `.venv/bin/python scripts/run_benchmark.py ...` without `OPENAI_API_KEY`: exits before network access with a clear configuration error.
 
 ## Source Of Truth

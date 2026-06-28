@@ -5,8 +5,16 @@ import asyncio
 import os
 from pathlib import Path
 from time import perf_counter
+from uuid import uuid4
 
-from inference_engine.benchmarking.harness import load_workload, summarize_traces, write_report
+from inference_engine.benchmarking.harness import (
+    compare_reports,
+    load_workload,
+    summarize_traces,
+    write_comparison,
+    write_report,
+)
+from inference_engine.benchmarking.sqlite_ledger import SQLiteBenchmarkLedger
 from inference_engine.domain.cost.pricing import DEFAULT_PRICING, UnknownModelPricingError
 from inference_engine.domain.models.request import InferenceRequest, ModelParameters
 from inference_engine.domain.models.routing import ModelConfig, ModelTier, RoutingStrategy
@@ -19,6 +27,26 @@ from inference_engine.infrastructure.telemetry.request_log import JsonlRequestLo
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="run_benchmark")
+    subparsers = parser.add_subparsers(dest="command")
+
+    run_parser = subparsers.add_parser("run", help="Run one benchmark strategy")
+    _add_run_arguments(run_parser)
+
+    compare_parser = subparsers.add_parser("compare", help="Compare two stored benchmark runs")
+    compare_parser.add_argument("--sqlite-ledger-path", default="reports/benchmarks/ledger.sqlite3")
+    compare_parser.add_argument("--baseline-run-id", required=True)
+    compare_parser.add_argument("--candidate-run-id", required=True)
+    compare_parser.add_argument("--comparison-path", default="reports/benchmarks/latest-comparison.json")
+
+    _add_run_arguments(parser)
+    parser.set_defaults(command="run")
+    args = parser.parse_args()
+    if args.command == "compare":
+        return _compare(args)
+    return asyncio.run(_run(args))
+
+
+def _add_run_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--workload", default="benchmarks/workloads/smoke.jsonl")
     parser.add_argument("--provider", choices=["openai"], default="openai")
     parser.add_argument("--model", default="gpt-4o-mini")
@@ -31,9 +59,9 @@ def main() -> int:
     parser.add_argument("--max-tokens", type=int, default=128)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--ledger-path", default="reports/benchmarks/latest-ledger.jsonl")
+    parser.add_argument("--sqlite-ledger-path", default="reports/benchmarks/ledger.sqlite3")
     parser.add_argument("--report-path", default="reports/benchmarks/latest-report.json")
-    args = parser.parse_args()
-    return asyncio.run(_run(args))
+    parser.add_argument("--run-id", default=None)
 
 
 async def _run(args: argparse.Namespace) -> int:
@@ -44,9 +72,12 @@ async def _run(args: argparse.Namespace) -> int:
 
     workload_path = Path(args.workload)
     ledger_path = Path(args.ledger_path)
+    sqlite_ledger_path = Path(args.sqlite_ledger_path)
     report_path = Path(args.report_path)
+    run_id = args.run_id or f"{args.strategy}-{uuid4().hex[:12]}"
     workload = load_workload(workload_path)
     request_log = JsonlRequestLog(ledger_path)
+    sqlite_ledger = SQLiteBenchmarkLedger(sqlite_ledger_path)
     router = _build_router(args)
     backends: dict[str, OpenAIBackend] = {}
 
@@ -110,9 +141,11 @@ async def _run(args: argparse.Namespace) -> int:
         traces=traces,
     )
     write_report(report, report_path)
+    sqlite_ledger.record_run(run_id=run_id, report=report, traces=traces)
     print(
         " ".join(
             [
+                f"run_id={run_id}",
                 f"requests={report.request_count}",
                 f"successes={report.success_count}",
                 f"failures={report.failure_count}",
@@ -120,10 +153,37 @@ async def _run(args: argparse.Namespace) -> int:
                 f"latency_p95_ms={report.latency_p95_ms}",
                 f"estimated_cost_usd={report.estimated_cost_usd:.8f}",
                 f"report_path={report_path}",
+                f"sqlite_ledger_path={sqlite_ledger_path}",
             ]
         )
     )
     return 0 if report.failure_count == 0 else 1
+
+
+def _compare(args: argparse.Namespace) -> int:
+    sqlite_ledger = SQLiteBenchmarkLedger(Path(args.sqlite_ledger_path))
+    baseline = sqlite_ledger.get_report(args.baseline_run_id)
+    candidate = sqlite_ledger.get_report(args.candidate_run_id)
+    comparison = compare_reports(
+        baseline_run_id=args.baseline_run_id,
+        baseline=baseline,
+        candidate_run_id=args.candidate_run_id,
+        candidate=candidate,
+    )
+    write_comparison(comparison, Path(args.comparison_path))
+    print(
+        " ".join(
+            [
+                f"comparable={str(comparison.comparable).lower()}",
+                f"baseline_run_id={comparison.baseline_run_id}",
+                f"candidate_run_id={comparison.candidate_run_id}",
+                f"cost_delta_usd={comparison.cost_delta_usd:.8f}",
+                f"latency_p95_delta_ms={comparison.latency_p95_delta_ms}",
+                f"comparison_path={args.comparison_path}",
+            ]
+        )
+    )
+    return 0 if comparison.comparable else 1
 
 
 def _build_router(args: argparse.Namespace) -> BaselineRouter:

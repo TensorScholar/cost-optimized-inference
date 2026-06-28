@@ -28,8 +28,9 @@ The repository now has:
 - an OpenAI-compatible provider adapter with timeout configuration, bounded retries, cancellation propagation, normalized provider errors, usage extraction, and real cost accounting;
 - a versioned pricing table for supported model cost estimates;
 - an append-only JSONL request ledger for local smoke and benchmark runs;
+- a local SQLite benchmark ledger that stores run summaries and request traces by `run_id`;
 - a small `inference-smoke` CLI for one real provider call;
-- a benchmark harness with a replayable JSONL workload and JSON report output;
+- a benchmark harness with a replayable JSONL workload, JSON report output, and baseline-vs-candidate comparison from stored runs;
 - deterministic `single_model` and `rule_based` baseline routing modes;
 - architecture and benchmark planning docs under [docs/](./docs/README.md);
 - repo-level Codex guidance and review skills for keeping future work honest.
@@ -119,9 +120,30 @@ Run the v0 benchmark harness:
 
 ```bash
 .venv/bin/python scripts/run_benchmark.py \
+  run \
   --workload benchmarks/workloads/smoke.jsonl \
   --strategy single_model \
-  --model gpt-4o-mini
+  --model gpt-4o-mini \
+  --run-id baseline-gpt-4o-mini
+```
+
+Run a candidate strategy on the same workload:
+
+```bash
+.venv/bin/python scripts/run_benchmark.py \
+  run \
+  --workload benchmarks/workloads/smoke.jsonl \
+  --strategy rule_based \
+  --run-id candidate-rule-based
+```
+
+Compare stored runs:
+
+```bash
+.venv/bin/python scripts/run_benchmark.py \
+  compare \
+  --baseline-run-id baseline-gpt-4o-mini \
+  --candidate-run-id candidate-rule-based
 ```
 
 ## Roadmap
@@ -129,8 +151,8 @@ Run the v0 benchmark harness:
 1. **Phase 1: Real provider path and local ledger**
    OpenAI-compatible execution, normalized errors, cost accounting, request tracing, and smoke CLI.
 
-2. **Phase 2: Benchmark reports and baseline comparison**
-   Compare `single_model` and `rule_based` strategies on the same replayable workload.
+2. **Phase 2: Quality-aware benchmark reports**
+   Add deterministic quality checks before publishing any savings claim.
 
 3. **Phase 3: Policy router**
    Route by cost, latency SLO, quality tier, deadline, and fallback constraints.
