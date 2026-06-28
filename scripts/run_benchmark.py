@@ -278,6 +278,7 @@ def _export(args: argparse.Namespace) -> int:
     report = sqlite_ledger.get_report(args.run_id)
     traces = sqlite_ledger.get_traces(args.run_id)
     routes = sqlite_ledger.get_routes(args.run_id)
+    provider_usage_summary = sqlite_ledger.get_provider_usage_summary(args.run_id)
     output_dir = Path(args.output_dir)
 
     written: list[Path] = []
@@ -293,6 +294,7 @@ def _export(args: argparse.Namespace) -> int:
             traces=traces,
             routes=routes,
             output_path=path,
+            provider_usage_summary=provider_usage_summary,
         )
         written.append(path)
 

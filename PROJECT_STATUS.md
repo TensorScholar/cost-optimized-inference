@@ -28,13 +28,13 @@ The previous status language claimed production readiness and complete infrastru
 - Deterministic `policy` routing is available for benchmark runs with explicit cost budget, latency SLO, quality floor, and auditable reason codes.
 - Provider attempt and retry counts are recorded on responses, request traces, and benchmark summaries.
 - SQLite benchmark runs store queryable provider usage rows and aggregate usage summaries by run.
+- Markdown benchmark exports include provider usage summaries with model-level cost and token breakdowns.
 - GitHub Actions CI runs lint, type checking, and tests without provider calls.
 - Local `.venv` gates pass for tests, lint, typecheck, and import smoke.
 
 ## What Is Not Implemented Yet
 
 - Deadline-aware fallback policy constraints and observed-profile adaptation.
-- Markdown provider usage summary section in exported run reports.
 - Published baseline-vs-candidate savings reports with real run artifacts.
 - Semantic quality evaluation beyond simple deterministic validators.
 - Eval-aware routing.

@@ -5,7 +5,7 @@ import json
 
 from inference_engine.benchmarking.export import export_run_json, export_run_markdown
 from inference_engine.benchmarking.harness import summarize_traces
-from inference_engine.benchmarking.sqlite_ledger import SQLiteBenchmarkLedger
+from inference_engine.benchmarking.sqlite_ledger import ProviderUsageSummary, SQLiteBenchmarkLedger
 from inference_engine.infrastructure.telemetry.request_log import RequestTrace, RouteTrace
 from scripts.run_benchmark import _export
 
@@ -94,6 +94,20 @@ def test_export_run_markdown_writes_summary(tmp_path) -> None:
         traces=traces,
         routes=routes,
         output_path=output_path,
+        provider_usage_summary=ProviderUsageSummary(
+            run_id="run-1",
+            request_count=1,
+            success_count=1,
+            failure_count=0,
+            prompt_tokens=10,
+            completion_tokens=5,
+            total_tokens=15,
+            estimated_cost_usd=0.001,
+            provider_attempt_count=2,
+            provider_retry_count=1,
+            cost_by_model={"test-model": 0.001},
+            tokens_by_model={"test-model": 15},
+        ),
     )
 
     raw = output_path.read_text(encoding="utf-8")
@@ -101,6 +115,9 @@ def test_export_run_markdown_writes_summary(tmp_path) -> None:
     assert "## Model Distribution" in raw
     assert "## Observed Latency By Model" in raw
     assert "## Route Reason Distribution" in raw
+    assert "## Provider Usage Summary" in raw
+    assert "| `test-model` | $0.00100000 |" in raw
+    assert "| `test-model` | 15 |" in raw
     assert "- Provider attempts: 2" in raw
     assert "- Provider retries: 1" in raw
     assert "## Route Decisions" in raw
@@ -132,5 +149,7 @@ def test_export_cli_writes_both_formats(tmp_path) -> None:
     )
 
     assert exit_code == 0
+    markdown_path = tmp_path / "exports" / "run-1.md"
     assert (tmp_path / "exports" / "run-1.json").exists()
-    assert (tmp_path / "exports" / "run-1.md").exists()
+    assert markdown_path.exists()
+    assert "## Provider Usage Summary" in markdown_path.read_text(encoding="utf-8")

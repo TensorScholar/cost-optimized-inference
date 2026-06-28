@@ -40,6 +40,7 @@ The repository now has:
 - route decision traces with selected model, considered models, fallback models, reason, estimated latency, and estimated cost;
 - pre-provider estimated cost budget enforcement for benchmark runs;
 - benchmark run export to JSON and Markdown from the SQLite ledger;
+- Markdown benchmark exports include provider usage summaries with model-level cost and token breakdowns;
 - per-run model distribution, route reason distribution, and observed latency profiles by model;
 - GitHub Actions CI for lint, type checking, and tests;
 - architecture and benchmark planning docs under [docs/](./docs/README.md);
@@ -47,7 +48,6 @@ The repository now has:
 
 Not implemented yet:
 
-- Markdown provider usage summary section in exported run reports;
 - deadline-aware fallback policy constraints and observed-profile adaptation;
 - committed real benchmark artifacts from an API-key run;
 - published measured savings reports;

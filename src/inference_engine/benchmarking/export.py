@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ..infrastructure.telemetry.request_log import RequestTrace, RouteTrace
 from .harness import BenchmarkReport
+from .sqlite_ledger import ProviderUsageSummary
 
 
 def export_run_json(
@@ -35,6 +36,7 @@ def export_run_markdown(
     traces: list[RequestTrace],
     routes: list[RouteTrace],
     output_path: Path,
+    provider_usage_summary: ProviderUsageSummary | None = None,
 ) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     lines = [
@@ -89,6 +91,41 @@ def export_run_markdown(
             lines.append(f"- {count} x {_escape_table(reason)}")
     else:
         lines.append("No route reasons were recorded.")
+
+    lines.extend(["", "## Provider Usage Summary", ""])
+    if provider_usage_summary is not None:
+        lines.extend(
+            [
+                f"- Requests: {provider_usage_summary.request_count}",
+                f"- Successes: {provider_usage_summary.success_count}",
+                f"- Failures: {provider_usage_summary.failure_count}",
+                f"- Prompt tokens: {provider_usage_summary.prompt_tokens}",
+                f"- Completion tokens: {provider_usage_summary.completion_tokens}",
+                f"- Total tokens: {provider_usage_summary.total_tokens}",
+                f"- Estimated cost: ${provider_usage_summary.estimated_cost_usd:.8f}",
+                f"- Provider attempts: {provider_usage_summary.provider_attempt_count}",
+                f"- Provider retries: {provider_usage_summary.provider_retry_count}",
+                "",
+                "### Cost By Model",
+                "",
+            ]
+        )
+        if provider_usage_summary.cost_by_model:
+            lines.extend(["| Model | Cost |", "| --- | ---: |"])
+            for model, cost in provider_usage_summary.cost_by_model.items():
+                lines.append(f"| `{model}` | ${cost:.8f} |")
+        else:
+            lines.append("No provider cost was recorded.")
+
+        lines.extend(["", "### Tokens By Model", ""])
+        if provider_usage_summary.tokens_by_model:
+            lines.extend(["| Model | Tokens |", "| --- | ---: |"])
+            for model, tokens in provider_usage_summary.tokens_by_model.items():
+                lines.append(f"| `{model}` | {tokens} |")
+        else:
+            lines.append("No provider tokens were recorded.")
+    else:
+        lines.append("No provider usage summary was available for this export.")
 
     lines.extend(
         [
