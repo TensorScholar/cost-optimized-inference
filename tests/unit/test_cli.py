@@ -7,6 +7,8 @@ from uuid import uuid4
 import pytest
 
 import scripts.run_benchmark as benchmark_script
+from inference_engine.benchmarking.harness import summarize_traces
+from inference_engine.benchmarking.sqlite_ledger import SQLiteBenchmarkLedger
 from inference_engine.cli import _run_smoke
 from inference_engine.domain.models.routing import (
     ModelConfig,
@@ -15,6 +17,7 @@ from inference_engine.domain.models.routing import (
     RoutingStrategy,
 )
 from inference_engine.domain.routing.policy import PolicyRouter
+from inference_engine.infrastructure.telemetry.request_log import RequestTrace
 
 
 @pytest.mark.asyncio
@@ -127,3 +130,50 @@ def test_benchmark_build_router_supports_policy_strategy() -> None:
     assert router.config.max_estimated_cost_usd == 0.002
     assert router.config.latency_slo_ms == 800
     assert router.config.min_quality_score == 0.70
+
+
+def test_benchmark_usage_summary_cli_writes_provider_usage_json(tmp_path) -> None:
+    ledger = SQLiteBenchmarkLedger(tmp_path / "ledger.sqlite3")
+    trace = RequestTrace(
+        request_id="request-1",
+        provider="openai",
+        model="test-model",
+        latency_ms=123,
+        prompt_tokens=10,
+        completion_tokens=5,
+        total_tokens=15,
+        estimated_cost_usd=0.001,
+        pricing_table_version="test",
+        cache_hit=False,
+        error_type=None,
+        error_message=None,
+        timestamp="2026-01-01T00:00:00+00:00",
+        provider_attempt_count=2,
+        provider_retry_count=1,
+    )
+    report = summarize_traces(
+        workload_path=tmp_path / "workload.jsonl",
+        strategy="single_model",
+        provider="openai",
+        model="test-model",
+        ledger_path=tmp_path / "ledger.jsonl",
+        traces=[trace],
+    )
+    ledger.record_run(run_id="run-1", report=report, traces=[trace])
+
+    output_path = tmp_path / "usage.json"
+    exit_code = benchmark_script._usage_summary(
+        argparse.Namespace(
+            sqlite_ledger_path=str(tmp_path / "ledger.sqlite3"),
+            run_id="run-1",
+            output_path=str(output_path),
+        )
+    )
+
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert payload["run_id"] == "run-1"
+    assert payload["estimated_cost_usd"] == 0.001
+    assert payload["provider_attempt_count"] == 2
+    assert payload["provider_retry_count"] == 1
+    assert payload["cost_by_model"] == {"test-model": 0.001}

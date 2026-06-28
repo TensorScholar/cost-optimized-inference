@@ -30,6 +30,7 @@ The repository now has:
 - a versioned pricing table for supported model cost estimates;
 - an append-only JSONL request ledger for local smoke and benchmark runs;
 - a local SQLite benchmark ledger that stores run summaries and request traces by `run_id`;
+- queryable SQLite provider usage rows and summaries for benchmark cost, token, and retry analysis;
 - a small `inference-smoke` CLI for one real provider call;
 - a benchmark harness with a replayable JSONL workload, JSON report output, and baseline-vs-candidate comparison from stored runs;
 - deterministic quality validators for workload-declared checks: JSON keys, exact match, and required substrings;
@@ -45,7 +46,7 @@ The repository now has:
 
 Not implemented yet:
 
-- provider usage storage in SQLite or DuckDB;
+- SQL export/report commands over stored provider usage summaries;
 - deadline-aware fallback policy constraints and observed-profile adaptation;
 - committed real benchmark artifacts from an API-key run;
 - published measured savings reports;
@@ -179,6 +180,15 @@ Export one stored run:
   export \
   --run-id baseline-gpt-4o-mini \
   --format both
+```
+
+Summarize stored provider usage for a run:
+
+```bash
+.venv/bin/python scripts/run_benchmark.py \
+  usage-summary \
+  --run-id baseline-gpt-4o-mini \
+  --output-path reports/benchmarks/latest-usage-summary.json
 ```
 
 ## Roadmap

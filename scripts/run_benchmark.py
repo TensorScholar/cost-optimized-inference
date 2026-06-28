@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
@@ -54,6 +55,11 @@ def main() -> int:
     export_parser.add_argument("--output-dir", default="reports/benchmarks/exports")
     export_parser.add_argument("--format", choices=["json", "markdown", "both"], default="both")
 
+    usage_parser = subparsers.add_parser("usage-summary", help="Summarize stored provider usage")
+    usage_parser.add_argument("--sqlite-ledger-path", default="reports/benchmarks/ledger.sqlite3")
+    usage_parser.add_argument("--run-id", required=True)
+    usage_parser.add_argument("--output-path", default=None)
+
     _add_run_arguments(parser)
     parser.set_defaults(command="run")
     args = parser.parse_args()
@@ -61,6 +67,8 @@ def main() -> int:
         return _compare(args)
     if args.command == "export":
         return _export(args)
+    if args.command == "usage-summary":
+        return _usage_summary(args)
     return asyncio.run(_run(args))
 
 
@@ -289,6 +297,31 @@ def _export(args: argparse.Namespace) -> int:
         written.append(path)
 
     print(" ".join([f"run_id={args.run_id}", *[f"written={path}" for path in written]]))
+    return 0
+
+
+def _usage_summary(args: argparse.Namespace) -> int:
+    sqlite_ledger = SQLiteBenchmarkLedger(Path(args.sqlite_ledger_path))
+    summary = sqlite_ledger.get_provider_usage_summary(args.run_id)
+    payload = asdict(summary)
+    if args.output_path:
+        output_path = Path(args.output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(
+        " ".join(
+            [
+                f"run_id={summary.run_id}",
+                f"requests={summary.request_count}",
+                f"successes={summary.success_count}",
+                f"failures={summary.failure_count}",
+                f"total_tokens={summary.total_tokens}",
+                f"estimated_cost_usd={summary.estimated_cost_usd:.8f}",
+                f"provider_attempts={summary.provider_attempt_count}",
+                f"provider_retries={summary.provider_retry_count}",
+            ]
+        )
+    )
     return 0
 
 

@@ -2,14 +2,51 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from ..infrastructure.telemetry.request_log import RequestTrace, RouteTrace
 from ..utils.time import utc_now
 from .harness import BenchmarkReport
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+
+@dataclass(frozen=True)
+class ProviderUsageRecord:
+    """Queryable provider usage row derived from one benchmark request trace."""
+
+    request_id: str
+    provider: str
+    model: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    estimated_cost_usd: float
+    pricing_table_version: str
+    cache_hit: bool
+    provider_attempt_count: int
+    provider_retry_count: int
+    error_type: str | None
+    timestamp: str
+
+
+@dataclass(frozen=True)
+class ProviderUsageSummary:
+    """Aggregated provider usage for a benchmark run."""
+
+    run_id: str
+    request_count: int
+    success_count: int
+    failure_count: int
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    estimated_cost_usd: float
+    provider_attempt_count: int
+    provider_retry_count: int
+    cost_by_model: dict[str, float]
+    tokens_by_model: dict[str, int]
 
 
 class SQLiteBenchmarkLedger:
@@ -64,6 +101,30 @@ class SQLiteBenchmarkLedger:
                     quality_score REAL,
                     quality_reason TEXT,
                     eval_type TEXT,
+                    provider_attempt_count INTEGER NOT NULL DEFAULT 1,
+                    provider_retry_count INTEGER NOT NULL DEFAULT 0,
+                    timestamp TEXT NOT NULL,
+                    PRIMARY KEY (run_id, request_id),
+                    FOREIGN KEY (run_id) REFERENCES benchmark_runs(run_id) ON DELETE CASCADE
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS benchmark_provider_usage (
+                    run_id TEXT NOT NULL,
+                    request_id TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    prompt_tokens INTEGER NOT NULL,
+                    completion_tokens INTEGER NOT NULL,
+                    total_tokens INTEGER NOT NULL,
+                    estimated_cost_usd REAL NOT NULL,
+                    pricing_table_version TEXT NOT NULL,
+                    cache_hit INTEGER NOT NULL,
+                    provider_attempt_count INTEGER NOT NULL,
+                    provider_retry_count INTEGER NOT NULL,
+                    error_type TEXT,
                     timestamp TEXT NOT NULL,
                     PRIMARY KEY (run_id, request_id),
                     FOREIGN KEY (run_id) REFERENCES benchmark_runs(run_id) ON DELETE CASCADE
@@ -99,7 +160,45 @@ class SQLiteBenchmarkLedger:
                     "quality_score": "REAL",
                     "quality_reason": "TEXT",
                     "eval_type": "TEXT",
+                    "provider_attempt_count": "INTEGER NOT NULL DEFAULT 1",
+                    "provider_retry_count": "INTEGER NOT NULL DEFAULT 0",
                 },
+            )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO benchmark_provider_usage (
+                    run_id,
+                    request_id,
+                    provider,
+                    model,
+                    prompt_tokens,
+                    completion_tokens,
+                    total_tokens,
+                    estimated_cost_usd,
+                    pricing_table_version,
+                    cache_hit,
+                    provider_attempt_count,
+                    provider_retry_count,
+                    error_type,
+                    timestamp
+                )
+                SELECT
+                    run_id,
+                    request_id,
+                    provider,
+                    model,
+                    prompt_tokens,
+                    completion_tokens,
+                    total_tokens,
+                    estimated_cost_usd,
+                    pricing_table_version,
+                    cache_hit,
+                    provider_attempt_count,
+                    provider_retry_count,
+                    error_type,
+                    timestamp
+                FROM benchmark_traces
+                """
             )
             connection.execute(
                 """
@@ -139,6 +238,7 @@ class SQLiteBenchmarkLedger:
             )
             connection.execute("DELETE FROM benchmark_traces WHERE run_id = ?", (run_id,))
             connection.execute("DELETE FROM benchmark_routes WHERE run_id = ?", (run_id,))
+            connection.execute("DELETE FROM benchmark_provider_usage WHERE run_id = ?", (run_id,))
             connection.executemany(
                 """
                 INSERT INTO benchmark_traces (
@@ -159,9 +259,11 @@ class SQLiteBenchmarkLedger:
                     quality_score,
                     quality_reason,
                     eval_type,
+                    provider_attempt_count,
+                    provider_retry_count,
                     timestamp
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -182,6 +284,48 @@ class SQLiteBenchmarkLedger:
                         trace.quality_score,
                         trace.quality_reason,
                         trace.eval_type,
+                        trace.provider_attempt_count,
+                        trace.provider_retry_count,
+                        trace.timestamp,
+                    )
+                    for trace in traces
+                ],
+            )
+            connection.executemany(
+                """
+                INSERT INTO benchmark_provider_usage (
+                    run_id,
+                    request_id,
+                    provider,
+                    model,
+                    prompt_tokens,
+                    completion_tokens,
+                    total_tokens,
+                    estimated_cost_usd,
+                    pricing_table_version,
+                    cache_hit,
+                    provider_attempt_count,
+                    provider_retry_count,
+                    error_type,
+                    timestamp
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        run_id,
+                        trace.request_id,
+                        trace.provider,
+                        trace.model,
+                        trace.prompt_tokens,
+                        trace.completion_tokens,
+                        trace.total_tokens,
+                        trace.estimated_cost_usd,
+                        trace.pricing_table_version,
+                        1 if trace.cache_hit else 0,
+                        trace.provider_attempt_count,
+                        trace.provider_retry_count,
+                        trace.error_type,
                         trace.timestamp,
                     )
                     for trace in traces
@@ -272,6 +416,8 @@ class SQLiteBenchmarkLedger:
                     quality_score,
                     quality_reason,
                     eval_type,
+                    provider_attempt_count,
+                    provider_retry_count,
                     timestamp
                 FROM benchmark_traces
                 WHERE run_id = ?
@@ -298,9 +444,84 @@ class SQLiteBenchmarkLedger:
                 quality_score=row["quality_score"],
                 quality_reason=row["quality_reason"],
                 eval_type=row["eval_type"],
+                provider_attempt_count=int(row["provider_attempt_count"]),
+                provider_retry_count=int(row["provider_retry_count"]),
             )
             for row in rows
         ]
+
+    def get_provider_usage(self, run_id: str) -> list[ProviderUsageRecord]:
+        self.initialize()
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    request_id,
+                    provider,
+                    model,
+                    prompt_tokens,
+                    completion_tokens,
+                    total_tokens,
+                    estimated_cost_usd,
+                    pricing_table_version,
+                    cache_hit,
+                    provider_attempt_count,
+                    provider_retry_count,
+                    error_type,
+                    timestamp
+                FROM benchmark_provider_usage
+                WHERE run_id = ?
+                ORDER BY timestamp, request_id
+                """,
+                (run_id,),
+            ).fetchall()
+        return [
+            ProviderUsageRecord(
+                request_id=str(row["request_id"]),
+                provider=str(row["provider"]),
+                model=str(row["model"]),
+                prompt_tokens=int(row["prompt_tokens"]),
+                completion_tokens=int(row["completion_tokens"]),
+                total_tokens=int(row["total_tokens"]),
+                estimated_cost_usd=float(row["estimated_cost_usd"]),
+                pricing_table_version=str(row["pricing_table_version"]),
+                cache_hit=bool(row["cache_hit"]),
+                provider_attempt_count=int(row["provider_attempt_count"]),
+                provider_retry_count=int(row["provider_retry_count"]),
+                error_type=row["error_type"],
+                timestamp=str(row["timestamp"]),
+            )
+            for row in rows
+        ]
+
+    def get_provider_usage_summary(self, run_id: str) -> ProviderUsageSummary:
+        usage = self.get_provider_usage(run_id)
+        if not usage:
+            self.get_report(run_id)
+        cost_by_model: dict[str, float] = {}
+        tokens_by_model: dict[str, int] = {}
+        for record in usage:
+            cost_by_model[record.model] = cost_by_model.get(record.model, 0.0) + (
+                record.estimated_cost_usd
+            )
+            tokens_by_model[record.model] = tokens_by_model.get(record.model, 0) + (
+                record.total_tokens
+            )
+
+        return ProviderUsageSummary(
+            run_id=run_id,
+            request_count=len(usage),
+            success_count=sum(1 for record in usage if record.error_type is None),
+            failure_count=sum(1 for record in usage if record.error_type is not None),
+            prompt_tokens=sum(record.prompt_tokens for record in usage),
+            completion_tokens=sum(record.completion_tokens for record in usage),
+            total_tokens=sum(record.total_tokens for record in usage),
+            estimated_cost_usd=sum(record.estimated_cost_usd for record in usage),
+            provider_attempt_count=sum(record.provider_attempt_count for record in usage),
+            provider_retry_count=sum(record.provider_retry_count for record in usage),
+            cost_by_model=dict(sorted(cost_by_model.items())),
+            tokens_by_model=dict(sorted(tokens_by_model.items())),
+        )
 
     def get_routes(self, run_id: str) -> list[RouteTrace]:
         self.initialize()
