@@ -35,6 +35,8 @@ The repository now has:
 - deterministic `single_model` and `rule_based` baseline routing modes;
 - route decision traces with selected model, considered models, fallback models, reason, estimated latency, and estimated cost;
 - pre-provider estimated cost budget enforcement for benchmark runs;
+- benchmark run export to JSON and Markdown from the SQLite ledger;
+- GitHub Actions CI for lint, type checking, and tests;
 - architecture and benchmark planning docs under [docs/](./docs/README.md);
 - repo-level Codex guidance and review skills for keeping future work honest.
 
@@ -106,8 +108,8 @@ Current baseline:
 
 ```text
 ruff:  all checks passed
-mypy:  no issues found in 81 source files
-pytest: 63 passed
+mypy:  no issues found in 82 source files
+pytest: 66 passed
 ```
 
 Run one real provider smoke call when `OPENAI_API_KEY` is set:
@@ -150,13 +152,22 @@ Compare stored runs:
   --candidate-run-id candidate-rule-based
 ```
 
+Export one stored run:
+
+```bash
+.venv/bin/python scripts/run_benchmark.py \
+  export \
+  --run-id baseline-gpt-4o-mini \
+  --format both
+```
+
 ## Roadmap
 
 1. **Phase 1: Real provider path and local ledger**
    OpenAI-compatible execution, normalized errors, cost accounting, request tracing, and smoke CLI.
 
 2. **Phase 2: Evidence reports**
-   Generate committed benchmark artifacts from real API-key runs, including quality pass rate, cost, latency, and limitations.
+   Run real API-key benchmarks and commit reviewed report artifacts with quality pass rate, cost, latency, route decisions, and limitations.
 
 3. **Phase 3: Policy router**
    Route by cost, latency SLO, quality tier, deadline, and fallback constraints.

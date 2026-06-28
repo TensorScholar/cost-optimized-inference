@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from inference_engine.benchmarking.budget import BudgetViolation, enforce_estimated_cost_budget
 from inference_engine.benchmarking.eval import evaluate_text
+from inference_engine.benchmarking.export import export_run_json, export_run_markdown
 from inference_engine.benchmarking.harness import (
     compare_reports,
     load_workload,
@@ -46,11 +47,19 @@ def main() -> int:
     compare_parser.add_argument("--candidate-run-id", required=True)
     compare_parser.add_argument("--comparison-path", default="reports/benchmarks/latest-comparison.json")
 
+    export_parser = subparsers.add_parser("export", help="Export one stored benchmark run")
+    export_parser.add_argument("--sqlite-ledger-path", default="reports/benchmarks/ledger.sqlite3")
+    export_parser.add_argument("--run-id", required=True)
+    export_parser.add_argument("--output-dir", default="reports/benchmarks/exports")
+    export_parser.add_argument("--format", choices=["json", "markdown", "both"], default="both")
+
     _add_run_arguments(parser)
     parser.set_defaults(command="run")
     args = parser.parse_args()
     if args.command == "compare":
         return _compare(args)
+    if args.command == "export":
+        return _export(args)
     return asyncio.run(_run(args))
 
 
@@ -242,6 +251,33 @@ def _compare(args: argparse.Namespace) -> int:
         )
     )
     return 0 if comparison.comparable else 1
+
+
+def _export(args: argparse.Namespace) -> int:
+    sqlite_ledger = SQLiteBenchmarkLedger(Path(args.sqlite_ledger_path))
+    report = sqlite_ledger.get_report(args.run_id)
+    traces = sqlite_ledger.get_traces(args.run_id)
+    routes = sqlite_ledger.get_routes(args.run_id)
+    output_dir = Path(args.output_dir)
+
+    written: list[Path] = []
+    if args.format in {"json", "both"}:
+        path = output_dir / f"{args.run_id}.json"
+        export_run_json(run_id=args.run_id, report=report, traces=traces, routes=routes, output_path=path)
+        written.append(path)
+    if args.format in {"markdown", "both"}:
+        path = output_dir / f"{args.run_id}.md"
+        export_run_markdown(
+            run_id=args.run_id,
+            report=report,
+            traces=traces,
+            routes=routes,
+            output_path=path,
+        )
+        written.append(path)
+
+    print(" ".join([f"run_id={args.run_id}", *[f"written={path}" for path in written]]))
+    return 0
 
 
 def _build_router(args: argparse.Namespace) -> BaselineRouter:

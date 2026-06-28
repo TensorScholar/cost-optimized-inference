@@ -22,6 +22,8 @@ The previous status language claimed production readiness and complete infrastru
 - Deterministic `single_model` and `rule_based` baseline routing modes are implemented for future comparisons.
 - Benchmark runs record route decisions in JSONL and SQLite, including model choice, reason, considered/fallback models, estimated latency, and estimated cost.
 - Benchmark runs can enforce `--max-estimated-cost-usd` before provider execution; budget violations are recorded without charging provider calls.
+- `scripts/run_benchmark.py export` can export a stored run as JSON and Markdown evidence.
+- GitHub Actions CI runs lint, type checking, and tests without provider calls.
 - Local `.venv` gates pass for tests, lint, typecheck, and import smoke.
 
 ## What Is Not Implemented Yet
@@ -47,8 +49,8 @@ The previous status language claimed production readiness and complete infrastru
 ## Current Verification
 
 - `.venv/bin/python -m ruff check src tests`: passed.
-- `.venv/bin/python -m mypy src`: passed, 81 source files.
-- `.venv/bin/python -m pytest`: passed, 63 tests.
+- `.venv/bin/python -m mypy src`: passed, 82 source files.
+- `.venv/bin/python -m pytest`: passed, 66 tests.
 - `.venv/bin/python scripts/run_benchmark.py ...` without `OPENAI_API_KEY`: exits before network access with a clear configuration error.
 
 ## Source Of Truth

@@ -1,0 +1,129 @@
+from __future__ import annotations
+
+import argparse
+import json
+
+from inference_engine.benchmarking.export import export_run_json, export_run_markdown
+from inference_engine.benchmarking.harness import summarize_traces
+from inference_engine.benchmarking.sqlite_ledger import SQLiteBenchmarkLedger
+from inference_engine.infrastructure.telemetry.request_log import RequestTrace, RouteTrace
+from scripts.run_benchmark import _export
+
+
+def _trace() -> RequestTrace:
+    return RequestTrace(
+        request_id="request-1",
+        provider="openai",
+        model="test-model",
+        latency_ms=123,
+        prompt_tokens=10,
+        completion_tokens=5,
+        total_tokens=15,
+        estimated_cost_usd=0.001,
+        pricing_table_version="test",
+        cache_hit=False,
+        error_type=None,
+        error_message=None,
+        timestamp="2026-01-01T00:00:00+00:00",
+        quality_passed=True,
+        quality_score=1.0,
+        quality_reason="passed",
+        eval_type="exact_match",
+    )
+
+
+def _route() -> RouteTrace:
+    return RouteTrace(
+        request_id="request-1",
+        strategy="single_model",
+        selected_model="test-model",
+        estimated_cost_usd=0.001,
+        estimated_latency_ms=250,
+        decision_reason="single model",
+        considered_models=["test-model"],
+        fallback_models=[],
+        max_estimated_cost_usd=0.01,
+        budget_violation=False,
+        budget_violation_reason=None,
+        timestamp="2026-01-01T00:00:00+00:00",
+    )
+
+
+def test_export_run_json_writes_report_traces_and_routes(tmp_path) -> None:
+    traces = [_trace()]
+    routes = [_route()]
+    report = summarize_traces(
+        workload_path=tmp_path / "workload.jsonl",
+        strategy="single_model",
+        provider="openai",
+        model="test-model",
+        ledger_path=tmp_path / "ledger.jsonl",
+        traces=traces,
+        route_traces=routes,
+    )
+    output_path = tmp_path / "run.json"
+
+    export_run_json(run_id="run-1", report=report, traces=traces, routes=routes, output_path=output_path)
+
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["run_id"] == "run-1"
+    assert payload["report"]["request_count"] == 1
+    assert payload["traces"][0]["request_id"] == "request-1"
+    assert payload["routes"][0]["selected_model"] == "test-model"
+
+
+def test_export_run_markdown_writes_summary(tmp_path) -> None:
+    traces = [_trace()]
+    routes = [_route()]
+    report = summarize_traces(
+        workload_path=tmp_path / "workload.jsonl",
+        strategy="single_model",
+        provider="openai",
+        model="test-model",
+        ledger_path=tmp_path / "ledger.jsonl",
+        traces=traces,
+        route_traces=routes,
+    )
+    output_path = tmp_path / "run.md"
+
+    export_run_markdown(
+        run_id="run-1",
+        report=report,
+        traces=traces,
+        routes=routes,
+        output_path=output_path,
+    )
+
+    raw = output_path.read_text(encoding="utf-8")
+    assert "# Benchmark Run `run-1`" in raw
+    assert "## Route Decisions" in raw
+    assert "## Limitations" in raw
+
+
+def test_export_cli_writes_both_formats(tmp_path) -> None:
+    ledger = SQLiteBenchmarkLedger(tmp_path / "ledger.sqlite3")
+    traces = [_trace()]
+    routes = [_route()]
+    report = summarize_traces(
+        workload_path=tmp_path / "workload.jsonl",
+        strategy="single_model",
+        provider="openai",
+        model="test-model",
+        ledger_path=tmp_path / "ledger.jsonl",
+        traces=traces,
+        route_traces=routes,
+    )
+    ledger.record_run(run_id="run-1", report=report, traces=traces, route_traces=routes)
+
+    exit_code = _export(
+        argparse.Namespace(
+            sqlite_ledger_path=str(tmp_path / "ledger.sqlite3"),
+            run_id="run-1",
+            output_dir=str(tmp_path / "exports"),
+            format="both",
+        )
+    )
+
+    assert exit_code == 0
+    assert (tmp_path / "exports" / "run-1.json").exists()
+    assert (tmp_path / "exports" / "run-1.md").exists()
