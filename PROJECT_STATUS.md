@@ -14,6 +14,7 @@ The previous status language claimed production readiness and complete infrastru
 - Cost accounting uses a versioned model pricing table and fails on unknown pricing instead of inventing a value.
 - Request traces can be appended to a local JSONL ledger.
 - `inference-smoke` can make one real provider call when `OPENAI_API_KEY` is set.
+- `/v1/inference` can execute the same OpenAI-compatible provider adapter path when `OPENAI_API_KEY` is set.
 - `scripts/run_benchmark.py run` can replay `benchmarks/workloads/smoke.jsonl`, write a JSON report, and store run data in a local SQLite ledger.
 - `scripts/run_benchmark.py compare` can compare two stored run summaries from the SQLite ledger.
 - Workload rows can declare deterministic quality validators: JSON keys, exact match, and required substrings.

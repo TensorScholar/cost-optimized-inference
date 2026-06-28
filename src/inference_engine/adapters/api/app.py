@@ -3,15 +3,17 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from .routes.cache import router as cache_router
+from .routes.inference import router as inference_router
 from .routes.metrics import router as metrics_router
 from .routes.models import router as models_router
 
 app = FastAPI(
     title="Honest LLM Inference Gateway",
     version="0.1.0",
-    description="SLO-aware LLM routing and benchmark lab. Provider inference is not implemented in Phase 0.",
+    description="SLO-aware LLM routing and benchmark lab with real provider inference paths.",
 )
 
+app.include_router(inference_router, prefix="/v1")
 app.include_router(models_router, prefix="/v1")
 app.include_router(metrics_router, prefix="/v1")
 app.include_router(cache_router, prefix="/v1")
@@ -30,4 +32,3 @@ async def ready() -> dict[str, bool]:
 @app.get("/health/live")
 async def live() -> dict[str, bool]:
     return {"alive": True}
-

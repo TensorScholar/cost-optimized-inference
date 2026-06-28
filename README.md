@@ -32,6 +32,7 @@ The repository now has:
 - a local SQLite benchmark ledger that stores run summaries and request traces by `run_id`;
 - queryable SQLite provider usage rows and summaries for benchmark cost, token, and retry analysis;
 - a small `inference-smoke` CLI for one real provider call;
+- a thin `/v1/inference` FastAPI route that executes the OpenAI-compatible provider adapter when `OPENAI_API_KEY` is set;
 - a benchmark harness with a replayable JSONL workload, JSON report output, and baseline-vs-candidate comparison from stored runs;
 - deterministic quality validators for workload-declared checks: JSON keys, exact match, and required substrings;
 - deterministic `single_model` and `rule_based` baseline routing modes;
@@ -46,7 +47,7 @@ The repository now has:
 
 Not implemented yet:
 
-- SQL export/report commands over stored provider usage summaries;
+- Markdown provider usage summary section in exported run reports;
 - deadline-aware fallback policy constraints and observed-profile adaptation;
 - committed real benchmark artifacts from an API-key run;
 - published measured savings reports;
@@ -124,6 +125,15 @@ Run one real provider smoke call when `OPENAI_API_KEY` is set:
   --provider openai \
   --model gpt-4o-mini \
   --prompt "Return JSON only with keys status and reason."
+```
+
+Run the local API and call the same provider path:
+
+```bash
+uvicorn inference_engine.adapters.api.app:app --host 127.0.0.1 --port 8000
+curl -s http://127.0.0.1:8000/v1/inference \
+  -H 'content-type: application/json' \
+  -d '{"prompt":"Return JSON only with keys status and reason.","model":"gpt-4o-mini"}'
 ```
 
 Run the v0 benchmark harness:
