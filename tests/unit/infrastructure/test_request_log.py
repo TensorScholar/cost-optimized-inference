@@ -3,8 +3,19 @@ from __future__ import annotations
 from uuid import uuid4
 
 from inference_engine.domain.models.response import CacheInfo, InferenceResponse, UsageMetrics
+from inference_engine.domain.models.routing import (
+    ModelConfig,
+    ModelTier,
+    RoutingDecision,
+    RoutingStrategy,
+)
 from inference_engine.infrastructure.models.errors import ProviderError, ProviderErrorType
-from inference_engine.infrastructure.telemetry.request_log import JsonlRequestLog, RequestTrace
+from inference_engine.infrastructure.telemetry.request_log import (
+    JsonlRequestLog,
+    JsonlRouteLog,
+    RequestTrace,
+    RouteTrace,
+)
 
 
 def test_jsonl_request_log_round_trips_success_trace(tmp_path) -> None:
@@ -60,3 +71,41 @@ def test_jsonl_request_log_round_trips_error_trace(tmp_path) -> None:
     assert traces[0].latency_ms == 42
     assert traces[0].error_type == "rate_limit"
     assert traces[0].estimated_cost_usd == 0.0
+
+
+def test_jsonl_route_log_round_trips_route_trace(tmp_path) -> None:
+    request_id = uuid4()
+    model = ModelConfig(
+        id="test-model",
+        name="Test Model",
+        tier=ModelTier.STANDARD,
+        max_context_length=4096,
+    )
+    decision = RoutingDecision(
+        request_id=request_id,
+        selected_model=model,
+        strategy=RoutingStrategy.SINGLE_MODEL,
+        complexity_estimate=None,
+        estimated_cost=0.001,
+        estimated_latency_ms=250,
+        estimated_quality_score=0.7,
+        decision_reason="test route",
+        fallback_models=[],
+        considered_models=["test-model"],
+    )
+    route_log = JsonlRouteLog(tmp_path / "routes.jsonl")
+
+    route_log.append(
+        RouteTrace.from_decision(
+            decision,
+            max_estimated_cost_usd=0.0005,
+            budget_violation_reason="too expensive",
+        )
+    )
+
+    traces = route_log.read_all()
+    assert len(traces) == 1
+    assert traces[0].request_id == str(request_id)
+    assert traces[0].selected_model == "test-model"
+    assert traces[0].budget_violation is True
+    assert traces[0].budget_violation_reason == "too expensive"

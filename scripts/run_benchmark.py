@@ -8,6 +8,7 @@ from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 
+from inference_engine.benchmarking.budget import BudgetViolation, enforce_estimated_cost_budget
 from inference_engine.benchmarking.eval import evaluate_text
 from inference_engine.benchmarking.harness import (
     compare_reports,
@@ -24,7 +25,12 @@ from inference_engine.domain.routing.baseline import BaselineRouter
 from inference_engine.domain.routing.complexity import ComplexityEstimator
 from inference_engine.infrastructure.models.errors import ProviderError, classify_openai_error
 from inference_engine.infrastructure.models.openai_backend import OpenAIBackend, RetryPolicy
-from inference_engine.infrastructure.telemetry.request_log import JsonlRequestLog, RequestTrace
+from inference_engine.infrastructure.telemetry.request_log import (
+    JsonlRequestLog,
+    JsonlRouteLog,
+    RequestTrace,
+    RouteTrace,
+)
 
 
 def main() -> int:
@@ -63,6 +69,8 @@ def _add_run_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--ledger-path", default="reports/benchmarks/latest-ledger.jsonl")
     parser.add_argument("--sqlite-ledger-path", default="reports/benchmarks/ledger.sqlite3")
     parser.add_argument("--report-path", default="reports/benchmarks/latest-report.json")
+    parser.add_argument("--route-ledger-path", default="reports/benchmarks/latest-routes.jsonl")
+    parser.add_argument("--max-estimated-cost-usd", type=float, default=None)
     parser.add_argument("--run-id", default=None)
 
 
@@ -79,6 +87,7 @@ async def _run(args: argparse.Namespace) -> int:
     run_id = args.run_id or f"{args.strategy}-{uuid4().hex[:12]}"
     workload = load_workload(workload_path)
     request_log = JsonlRequestLog(ledger_path)
+    route_log = JsonlRouteLog(Path(args.route_ledger_path))
     sqlite_ledger = SQLiteBenchmarkLedger(sqlite_ledger_path)
     router = _build_router(args)
     backends: dict[str, OpenAIBackend] = {}
@@ -101,6 +110,7 @@ async def _run(args: argparse.Namespace) -> int:
     )
 
     traces: list[RequestTrace] = []
+    route_traces: list[RouteTrace] = []
     for item in workload:
         request = InferenceRequest(
             prompt=item.prompt,
@@ -110,9 +120,16 @@ async def _run(args: argparse.Namespace) -> int:
             ),
         )
         decision = await router.route(request)
+        route_trace = RouteTrace.from_decision(
+            decision,
+            max_estimated_cost_usd=args.max_estimated_cost_usd,
+        )
         selected_model = decision.selected_model.id
         started = perf_counter()
         try:
+            enforce_estimated_cost_budget(decision, args.max_estimated_cost_usd)
+            route_log.append(route_trace)
+            route_traces.append(route_trace)
             response = await backend_for(selected_model).infer(request)
             trace = RequestTrace.from_response(provider=args.provider, response=response)
             eval_result = evaluate_text(response.text, item.eval_spec)
@@ -124,6 +141,29 @@ async def _run(args: argparse.Namespace) -> int:
                     quality_reason=eval_result.reason,
                     eval_type=eval_result.eval_type,
                 )
+        except BudgetViolation as exc:
+            route_trace = RouteTrace.from_decision(
+                decision,
+                max_estimated_cost_usd=args.max_estimated_cost_usd,
+                budget_violation_reason=exc.message,
+            )
+            route_log.append(route_trace)
+            route_traces.append(route_trace)
+            trace = RequestTrace(
+                request_id=str(request.id),
+                provider=args.provider,
+                model=selected_model,
+                latency_ms=0,
+                prompt_tokens=0,
+                completion_tokens=0,
+                total_tokens=0,
+                estimated_cost_usd=0.0,
+                pricing_table_version="not_charged",
+                cache_hit=False,
+                error_type="budget_violation",
+                error_message=exc.message,
+                timestamp=route_trace.timestamp,
+            )
         except ProviderError as exc:
             trace = RequestTrace.from_error(
                 request_id=request.id,
@@ -150,9 +190,15 @@ async def _run(args: argparse.Namespace) -> int:
         model=report_model,
         ledger_path=ledger_path,
         traces=traces,
+        route_traces=route_traces,
     )
     write_report(report, report_path)
-    sqlite_ledger.record_run(run_id=run_id, report=report, traces=traces)
+    sqlite_ledger.record_run(
+        run_id=run_id,
+        report=report,
+        traces=traces,
+        route_traces=route_traces,
+    )
     print(
         " ".join(
             [
@@ -160,6 +206,7 @@ async def _run(args: argparse.Namespace) -> int:
                 f"requests={report.request_count}",
                 f"successes={report.success_count}",
                 f"failures={report.failure_count}",
+                f"budget_violations={report.budget_violation_count}",
                 f"latency_p50_ms={report.latency_p50_ms}",
                 f"latency_p95_ms={report.latency_p95_ms}",
                 f"estimated_cost_usd={report.estimated_cost_usd:.8f}",

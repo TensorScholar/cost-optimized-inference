@@ -33,13 +33,15 @@ The repository now has:
 - a benchmark harness with a replayable JSONL workload, JSON report output, and baseline-vs-candidate comparison from stored runs;
 - deterministic quality validators for workload-declared checks: JSON keys, exact match, and required substrings;
 - deterministic `single_model` and `rule_based` baseline routing modes;
+- route decision traces with selected model, considered models, fallback models, reason, estimated latency, and estimated cost;
+- pre-provider estimated cost budget enforcement for benchmark runs;
 - architecture and benchmark planning docs under [docs/](./docs/README.md);
 - repo-level Codex guidance and review skills for keeping future work honest.
 
 Not implemented yet:
 
 - provider usage storage in SQLite or DuckDB;
-- policy router with budget enforcement and observed latency profiles;
+- policy router with observed latency profiles and richer budget policies;
 - published measured savings reports;
 - broad semantic quality evaluation beyond deterministic validators;
 - async batch lane;
@@ -104,8 +106,8 @@ Current baseline:
 
 ```text
 ruff:  all checks passed
-mypy:  no issues found in 80 source files
-pytest: 58 passed
+mypy:  no issues found in 81 source files
+pytest: 63 passed
 ```
 
 Run one real provider smoke call when `OPENAI_API_KEY` is set:
@@ -125,6 +127,7 @@ Run the v0 benchmark harness:
   --workload benchmarks/workloads/smoke.jsonl \
   --strategy single_model \
   --model gpt-4o-mini \
+  --max-estimated-cost-usd 0.01 \
   --run-id baseline-gpt-4o-mini
 ```
 

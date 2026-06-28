@@ -20,11 +20,13 @@ The previous status language claimed production readiness and complete infrastru
 - Benchmark reports include quality count, pass count, pass rate, and average deterministic score.
 - Comparisons are not marked comparable when candidate quality pass rate is below baseline.
 - Deterministic `single_model` and `rule_based` baseline routing modes are implemented for future comparisons.
+- Benchmark runs record route decisions in JSONL and SQLite, including model choice, reason, considered/fallback models, estimated latency, and estimated cost.
+- Benchmark runs can enforce `--max-estimated-cost-usd` before provider execution; budget violations are recorded without charging provider calls.
 - Local `.venv` gates pass for tests, lint, typecheck, and import smoke.
 
 ## What Is Not Implemented Yet
 
-- Policy router with budget enforcement and observed latency profiles.
+- Policy router with observed latency profiles and richer budget policies.
 - Published baseline-vs-candidate savings reports with real run artifacts.
 - Semantic quality evaluation beyond simple deterministic validators.
 - Eval-aware routing.
@@ -45,8 +47,8 @@ The previous status language claimed production readiness and complete infrastru
 ## Current Verification
 
 - `.venv/bin/python -m ruff check src tests`: passed.
-- `.venv/bin/python -m mypy src`: passed, 80 source files.
-- `.venv/bin/python -m pytest`: passed, 58 tests.
+- `.venv/bin/python -m mypy src`: passed, 81 source files.
+- `.venv/bin/python -m pytest`: passed, 63 tests.
 - `.venv/bin/python scripts/run_benchmark.py ...` without `OPENAI_API_KEY`: exits before network access with a clear configuration error.
 
 ## Source Of Truth

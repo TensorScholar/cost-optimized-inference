@@ -5,7 +5,7 @@ from dataclasses import asdict, dataclass
 from hashlib import sha256
 from pathlib import Path
 
-from ..infrastructure.telemetry.request_log import RequestTrace
+from ..infrastructure.telemetry.request_log import RequestTrace, RouteTrace
 from .eval import EvalSpec, parse_eval_spec
 
 
@@ -38,6 +38,8 @@ class BenchmarkReport:
     completion_tokens: int
     total_tokens: int
     estimated_cost_usd: float
+    route_count: int
+    budget_violation_count: int
     quality_count: int
     quality_pass_count: int
     quality_pass_rate: float | None
@@ -107,7 +109,9 @@ def summarize_traces(
     model: str,
     ledger_path: Path,
     traces: list[RequestTrace],
+    route_traces: list[RouteTrace] | None = None,
 ) -> BenchmarkReport:
+    routes = route_traces or []
     latencies = sorted(trace.latency_ms for trace in traces)
     success_traces = [trace for trace in traces if trace.error_type is None]
     quality_traces = [trace for trace in success_traces if trace.quality_passed is not None]
@@ -130,6 +134,8 @@ def summarize_traces(
         completion_tokens=sum(trace.completion_tokens for trace in success_traces),
         total_tokens=sum(trace.total_tokens for trace in success_traces),
         estimated_cost_usd=sum(trace.estimated_cost_usd for trace in success_traces),
+        route_count=len(routes),
+        budget_violation_count=sum(1 for route in routes if route.budget_violation),
         quality_count=len(quality_traces),
         quality_pass_count=quality_pass_count,
         quality_pass_rate=quality_pass_count / len(quality_traces) if quality_traces else None,

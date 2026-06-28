@@ -7,6 +7,7 @@ from uuid import UUID
 
 from ...domain.cost.pricing import PRICING_TABLE_VERSION
 from ...domain.models.response import InferenceResponse
+from ...domain.models.routing import RoutingDecision
 from ...infrastructure.models.errors import ProviderError
 from ...utils.time import utc_now
 
@@ -106,4 +107,70 @@ class JsonlRequestLog:
                 if not line.strip():
                     continue
                 traces.append(RequestTrace(**json.loads(line)))
+        return traces
+
+
+@dataclass(frozen=True)
+class RouteTrace:
+    """One routing decision record for benchmark auditability."""
+
+    request_id: str
+    strategy: str
+    selected_model: str
+    estimated_cost_usd: float
+    estimated_latency_ms: int
+    decision_reason: str
+    considered_models: list[str]
+    fallback_models: list[str]
+    max_estimated_cost_usd: float | None
+    budget_violation: bool
+    budget_violation_reason: str | None
+    timestamp: str
+
+    @classmethod
+    def from_decision(
+        cls,
+        decision: RoutingDecision,
+        *,
+        max_estimated_cost_usd: float | None = None,
+        budget_violation_reason: str | None = None,
+    ) -> RouteTrace:
+        budget_violation = budget_violation_reason is not None
+        return cls(
+            request_id=str(decision.request_id),
+            strategy=decision.strategy.value,
+            selected_model=decision.selected_model.id,
+            estimated_cost_usd=decision.estimated_cost,
+            estimated_latency_ms=decision.estimated_latency_ms,
+            decision_reason=decision.decision_reason,
+            considered_models=decision.considered_models,
+            fallback_models=[model.id for model in decision.fallback_models],
+            max_estimated_cost_usd=max_estimated_cost_usd,
+            budget_violation=budget_violation,
+            budget_violation_reason=budget_violation_reason,
+            timestamp=decision.timestamp.isoformat(),
+        )
+
+
+class JsonlRouteLog:
+    """Append-only JSONL route decision ledger for local benchmark runs."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def append(self, trace: RouteTrace) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self.path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(asdict(trace), sort_keys=True) + "\n")
+
+    def read_all(self) -> list[RouteTrace]:
+        if not self.path.exists():
+            return []
+
+        traces: list[RouteTrace] = []
+        with self.path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                traces.append(RouteTrace(**json.loads(line)))
         return traces
