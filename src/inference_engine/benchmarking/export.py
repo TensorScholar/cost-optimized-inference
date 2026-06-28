@@ -62,9 +62,39 @@ def export_run_markdown(
         f"- Route decisions: {report.route_count}",
         f"- Budget violations: {report.budget_violation_count}",
         "",
-        "## Route Decisions",
+        "## Model Distribution",
         "",
     ]
+    if report.model_distribution:
+        for model, count in report.model_distribution.items():
+            lines.append(f"- `{model}`: {count}")
+    else:
+        lines.append("No successful model calls were recorded.")
+
+    lines.extend(["", "## Observed Latency By Model", ""])
+    if report.observed_latency_ms_by_model:
+        lines.extend(["| Model | Count | p50 | p95 |", "| --- | ---: | ---: | ---: |"])
+        for model, profile in report.observed_latency_ms_by_model.items():
+            lines.append(
+                f"| `{model}` | {profile['count']} | {profile['p50']} ms | {profile['p95']} ms |"
+            )
+    else:
+        lines.append("No successful latency profiles were recorded.")
+
+    lines.extend(["", "## Route Reason Distribution", ""])
+    if report.route_reason_distribution:
+        for reason, count in report.route_reason_distribution.items():
+            lines.append(f"- {count} x {_escape_table(reason)}")
+    else:
+        lines.append("No route reasons were recorded.")
+
+    lines.extend(
+        [
+            "",
+            "## Route Decisions",
+            "",
+        ]
+    )
     if routes:
         lines.extend(
             [

@@ -108,6 +108,9 @@ def test_summarize_traces_reports_latency_tokens_cost_failures_and_quality(tmp_p
     assert report.prompt_tokens == 10
     assert report.completion_tokens == 5
     assert report.estimated_cost_usd == 0.01
+    assert report.model_distribution == {"test-model": 1}
+    assert report.observed_latency_ms_by_model == {"test-model": {"count": 1, "p50": 100, "p95": 100}}
+    assert report.route_reason_distribution == {}
     assert report.quality_count == 1
     assert report.quality_pass_count == 1
     assert report.quality_pass_rate == 1.0

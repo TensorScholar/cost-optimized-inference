@@ -96,6 +96,9 @@ def test_export_run_markdown_writes_summary(tmp_path) -> None:
 
     raw = output_path.read_text(encoding="utf-8")
     assert "# Benchmark Run `run-1`" in raw
+    assert "## Model Distribution" in raw
+    assert "## Observed Latency By Model" in raw
+    assert "## Route Reason Distribution" in raw
     assert "## Route Decisions" in raw
     assert "## Limitations" in raw
 

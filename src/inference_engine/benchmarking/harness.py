@@ -40,6 +40,9 @@ class BenchmarkReport:
     estimated_cost_usd: float
     route_count: int
     budget_violation_count: int
+    model_distribution: dict[str, int]
+    route_reason_distribution: dict[str, int]
+    observed_latency_ms_by_model: dict[str, dict[str, int]]
     quality_count: int
     quality_pass_count: int
     quality_pass_rate: float | None
@@ -136,6 +139,9 @@ def summarize_traces(
         estimated_cost_usd=sum(trace.estimated_cost_usd for trace in success_traces),
         route_count=len(routes),
         budget_violation_count=sum(1 for route in routes if route.budget_violation),
+        model_distribution=_count_by_model(success_traces),
+        route_reason_distribution=_count_by_reason(routes),
+        observed_latency_ms_by_model=_latency_profiles(success_traces),
         quality_count=len(quality_traces),
         quality_pass_count=quality_pass_count,
         quality_pass_rate=quality_pass_count / len(quality_traces) if quality_traces else None,
@@ -252,6 +258,36 @@ def _percentile(values: list[int], percentile: int) -> int:
         return values[0]
     index = round((percentile / 100) * (len(values) - 1))
     return values[index]
+
+
+def _count_by_model(traces: list[RequestTrace]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for trace in traces:
+        counts[trace.model] = counts.get(trace.model, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _count_by_reason(routes: list[RouteTrace]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for route in routes:
+        counts[route.decision_reason] = counts.get(route.decision_reason, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _latency_profiles(traces: list[RequestTrace]) -> dict[str, dict[str, int]]:
+    latencies_by_model: dict[str, list[int]] = {}
+    for trace in traces:
+        latencies_by_model.setdefault(trace.model, []).append(trace.latency_ms)
+
+    profiles: dict[str, dict[str, int]] = {}
+    for model, latencies in sorted(latencies_by_model.items()):
+        ordered = sorted(latencies)
+        profiles[model] = {
+            "count": len(ordered),
+            "p50": _percentile(ordered, 50),
+            "p95": _percentile(ordered, 95),
+        }
+    return profiles
 
 
 def _file_sha256(path: Path) -> str | None:

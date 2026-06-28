@@ -23,6 +23,7 @@ The previous status language claimed production readiness and complete infrastru
 - Benchmark runs record route decisions in JSONL and SQLite, including model choice, reason, considered/fallback models, estimated latency, and estimated cost.
 - Benchmark runs can enforce `--max-estimated-cost-usd` before provider execution; budget violations are recorded without charging provider calls.
 - `scripts/run_benchmark.py export` can export a stored run as JSON and Markdown evidence.
+- Benchmark reports include model distribution, route reason distribution, and observed p50/p95 latency by model.
 - GitHub Actions CI runs lint, type checking, and tests without provider calls.
 - Local `.venv` gates pass for tests, lint, typecheck, and import smoke.
 

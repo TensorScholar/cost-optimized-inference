@@ -36,6 +36,7 @@ The repository now has:
 - route decision traces with selected model, considered models, fallback models, reason, estimated latency, and estimated cost;
 - pre-provider estimated cost budget enforcement for benchmark runs;
 - benchmark run export to JSON and Markdown from the SQLite ledger;
+- per-run model distribution, route reason distribution, and observed latency profiles by model;
 - GitHub Actions CI for lint, type checking, and tests;
 - architecture and benchmark planning docs under [docs/](./docs/README.md);
 - repo-level Codex guidance and review skills for keeping future work honest.
