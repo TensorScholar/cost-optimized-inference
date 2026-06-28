@@ -16,14 +16,17 @@ The previous status language claimed production readiness and complete infrastru
 - `inference-smoke` can make one real provider call when `OPENAI_API_KEY` is set.
 - `scripts/run_benchmark.py run` can replay `benchmarks/workloads/smoke.jsonl`, write a JSON report, and store run data in a local SQLite ledger.
 - `scripts/run_benchmark.py compare` can compare two stored run summaries from the SQLite ledger.
+- Workload rows can declare deterministic quality validators: JSON keys, exact match, and required substrings.
+- Benchmark reports include quality count, pass count, pass rate, and average deterministic score.
+- Comparisons are not marked comparable when candidate quality pass rate is below baseline.
 - Deterministic `single_model` and `rule_based` baseline routing modes are implemented for future comparisons.
 - Local `.venv` gates pass for tests, lint, typecheck, and import smoke.
 
 ## What Is Not Implemented Yet
 
 - Policy router with budget enforcement and observed latency profiles.
-- Deterministic quality checks for baseline-vs-candidate reports.
 - Published baseline-vs-candidate savings reports with real run artifacts.
+- Semantic quality evaluation beyond simple deterministic validators.
 - Eval-aware routing.
 - Async batch lane.
 - Prompt cache advisor.
@@ -42,8 +45,8 @@ The previous status language claimed production readiness and complete infrastru
 ## Current Verification
 
 - `.venv/bin/python -m ruff check src tests`: passed.
-- `.venv/bin/python -m mypy src`: passed, 79 source files.
-- `.venv/bin/python -m pytest`: passed, 50 tests.
+- `.venv/bin/python -m mypy src`: passed, 80 source files.
+- `.venv/bin/python -m pytest`: passed, 58 tests.
 - `.venv/bin/python scripts/run_benchmark.py ...` without `OPENAI_API_KEY`: exits before network access with a clear configuration error.
 
 ## Source Of Truth

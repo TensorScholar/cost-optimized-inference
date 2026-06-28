@@ -60,11 +60,25 @@ class SQLiteBenchmarkLedger:
                     cache_hit INTEGER NOT NULL,
                     error_type TEXT,
                     error_message TEXT,
+                    quality_passed INTEGER,
+                    quality_score REAL,
+                    quality_reason TEXT,
+                    eval_type TEXT,
                     timestamp TEXT NOT NULL,
                     PRIMARY KEY (run_id, request_id),
                     FOREIGN KEY (run_id) REFERENCES benchmark_runs(run_id) ON DELETE CASCADE
                 )
                 """
+            )
+            _ensure_columns(
+                connection,
+                table_name="benchmark_traces",
+                columns={
+                    "quality_passed": "INTEGER",
+                    "quality_score": "REAL",
+                    "quality_reason": "TEXT",
+                    "eval_type": "TEXT",
+                },
             )
             connection.execute(
                 """
@@ -118,9 +132,13 @@ class SQLiteBenchmarkLedger:
                     cache_hit,
                     error_type,
                     error_message,
+                    quality_passed,
+                    quality_score,
+                    quality_reason,
+                    eval_type,
                     timestamp
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -137,6 +155,10 @@ class SQLiteBenchmarkLedger:
                         1 if trace.cache_hit else 0,
                         trace.error_type,
                         trace.error_message,
+                        _optional_bool_to_int(trace.quality_passed),
+                        trace.quality_score,
+                        trace.quality_reason,
+                        trace.eval_type,
                         trace.timestamp,
                     )
                     for trace in traces
@@ -154,6 +176,10 @@ class SQLiteBenchmarkLedger:
             raise KeyError(f"Unknown benchmark run_id: {run_id}")
         raw = json.loads(str(row["report_json"]))
         raw.setdefault("workload_sha256", None)
+        raw.setdefault("quality_count", 0)
+        raw.setdefault("quality_pass_count", 0)
+        raw.setdefault("quality_pass_rate", None)
+        raw.setdefault("quality_score_avg", None)
         return BenchmarkReport(**raw)
 
     def get_traces(self, run_id: str) -> list[RequestTrace]:
@@ -174,6 +200,10 @@ class SQLiteBenchmarkLedger:
                     cache_hit,
                     error_type,
                     error_message,
+                    quality_passed,
+                    quality_score,
+                    quality_reason,
+                    eval_type,
                     timestamp
                 FROM benchmark_traces
                 WHERE run_id = ?
@@ -196,6 +226,10 @@ class SQLiteBenchmarkLedger:
                 error_type=row["error_type"],
                 error_message=row["error_message"],
                 timestamp=str(row["timestamp"]),
+                quality_passed=_optional_int_to_bool(row["quality_passed"]),
+                quality_score=row["quality_score"],
+                quality_reason=row["quality_reason"],
+                eval_type=row["eval_type"],
             )
             for row in rows
         ]
@@ -204,3 +238,30 @@ class SQLiteBenchmarkLedger:
         connection = sqlite3.connect(self.path)
         connection.row_factory = sqlite3.Row
         return connection
+
+
+def _optional_bool_to_int(value: bool | None) -> int | None:
+    if value is None:
+        return None
+    return 1 if value else 0
+
+
+def _optional_int_to_bool(value: object) -> bool | None:
+    if value is None:
+        return None
+    return bool(value)
+
+
+def _ensure_columns(
+    connection: sqlite3.Connection,
+    *,
+    table_name: str,
+    columns: dict[str, str],
+) -> None:
+    existing = {
+        str(row["name"])
+        for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    }
+    for column_name, column_type in columns.items():
+        if column_name not in existing:
+            connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")

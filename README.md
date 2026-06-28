@@ -31,6 +31,7 @@ The repository now has:
 - a local SQLite benchmark ledger that stores run summaries and request traces by `run_id`;
 - a small `inference-smoke` CLI for one real provider call;
 - a benchmark harness with a replayable JSONL workload, JSON report output, and baseline-vs-candidate comparison from stored runs;
+- deterministic quality validators for workload-declared checks: JSON keys, exact match, and required substrings;
 - deterministic `single_model` and `rule_based` baseline routing modes;
 - architecture and benchmark planning docs under [docs/](./docs/README.md);
 - repo-level Codex guidance and review skills for keeping future work honest.
@@ -39,8 +40,8 @@ Not implemented yet:
 
 - provider usage storage in SQLite or DuckDB;
 - policy router with budget enforcement and observed latency profiles;
-- measured savings reports;
-- quality evaluation;
+- published measured savings reports;
+- broad semantic quality evaluation beyond deterministic validators;
 - async batch lane;
 - prompt cache advisor.
 
@@ -103,8 +104,8 @@ Current baseline:
 
 ```text
 ruff:  all checks passed
-mypy:  no issues found in 78 source files
-pytest: 43 passed
+mypy:  no issues found in 80 source files
+pytest: 58 passed
 ```
 
 Run one real provider smoke call when `OPENAI_API_KEY` is set:
@@ -151,8 +152,8 @@ Compare stored runs:
 1. **Phase 1: Real provider path and local ledger**
    OpenAI-compatible execution, normalized errors, cost accounting, request tracing, and smoke CLI.
 
-2. **Phase 2: Quality-aware benchmark reports**
-   Add deterministic quality checks before publishing any savings claim.
+2. **Phase 2: Evidence reports**
+   Generate committed benchmark artifacts from real API-key runs, including quality pass rate, cost, latency, and limitations.
 
 3. **Phase 3: Policy router**
    Route by cost, latency SLO, quality tier, deadline, and fallback constraints.

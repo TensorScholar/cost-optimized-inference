@@ -6,6 +6,7 @@ from hashlib import sha256
 from pathlib import Path
 
 from ..infrastructure.telemetry.request_log import RequestTrace
+from .eval import EvalSpec, parse_eval_spec
 
 
 @dataclass(frozen=True)
@@ -15,6 +16,7 @@ class WorkloadItem:
     id: str
     prompt: str
     tags: dict[str, str]
+    eval_spec: EvalSpec | None = None
 
 
 @dataclass(frozen=True)
@@ -36,6 +38,10 @@ class BenchmarkReport:
     completion_tokens: int
     total_tokens: int
     estimated_cost_usd: float
+    quality_count: int
+    quality_pass_count: int
+    quality_pass_rate: float | None
+    quality_score_avg: float | None
     ledger_path: str
     limitations: list[str]
 
@@ -58,6 +64,9 @@ class BenchmarkComparison:
     latency_p95_delta_ms: int
     baseline_error_rate: float
     candidate_error_rate: float
+    baseline_quality_pass_rate: float | None
+    candidate_quality_pass_rate: float | None
+    quality_pass_rate_delta: float | None
     comparable: bool
     limitations: list[str]
 
@@ -80,7 +89,11 @@ def load_workload(path: Path) -> list[WorkloadItem]:
                 isinstance(key, str) and isinstance(value, str) for key, value in tags.items()
             ):
                 raise ValueError(f"{path}:{line_number} tags must be an object of strings")
-            items.append(WorkloadItem(id=item_id, prompt=prompt, tags=tags))
+            try:
+                eval_spec = parse_eval_spec(raw.get("eval"))
+            except ValueError as exc:
+                raise ValueError(f"{path}:{line_number} invalid eval: {exc}") from exc
+            items.append(WorkloadItem(id=item_id, prompt=prompt, tags=tags, eval_spec=eval_spec))
     if not items:
         raise ValueError(f"{path} did not contain any workload items")
     return items
@@ -97,6 +110,8 @@ def summarize_traces(
 ) -> BenchmarkReport:
     latencies = sorted(trace.latency_ms for trace in traces)
     success_traces = [trace for trace in traces if trace.error_type is None]
+    quality_traces = [trace for trace in success_traces if trace.quality_passed is not None]
+    quality_pass_count = sum(1 for trace in quality_traces if trace.quality_passed)
     request_count = len(traces)
     failure_count = request_count - len(success_traces)
     return BenchmarkReport(
@@ -115,10 +130,18 @@ def summarize_traces(
         completion_tokens=sum(trace.completion_tokens for trace in success_traces),
         total_tokens=sum(trace.total_tokens for trace in success_traces),
         estimated_cost_usd=sum(trace.estimated_cost_usd for trace in success_traces),
+        quality_count=len(quality_traces),
+        quality_pass_count=quality_pass_count,
+        quality_pass_rate=quality_pass_count / len(quality_traces) if quality_traces else None,
+        quality_score_avg=sum(trace.quality_score or 0.0 for trace in quality_traces)
+        / len(quality_traces)
+        if quality_traces
+        else None,
         ledger_path=str(ledger_path),
         limitations=[
             "Cost is calculated from provider usage metadata and the repository pricing table.",
-            "This v0 report does not include quality scoring or savings claims.",
+            "Quality scoring is deterministic and limited to workload-declared validators.",
+            "Do not claim savings unless comparison quality remains acceptable.",
         ],
     )
 
@@ -144,8 +167,19 @@ def compare_reports(
         else True
     )
     same_request_count = baseline.request_count == candidate.request_count
+    same_quality_coverage = baseline.quality_count == candidate.quality_count
+    candidate_quality_ok = (
+        candidate.quality_pass_rate is not None
+        and baseline.quality_pass_rate is not None
+        and candidate.quality_pass_rate >= baseline.quality_pass_rate
+    )
     same_workload = same_workload_path and same_workload_hash and same_request_count
-    comparable = same_workload and baseline.provider == candidate.provider
+    comparable = (
+        same_workload
+        and baseline.provider == candidate.provider
+        and same_quality_coverage
+        and candidate_quality_ok
+    )
     cost_delta = candidate.estimated_cost_usd - baseline.estimated_cost_usd
     cost_delta_percent = (
         (cost_delta / baseline.estimated_cost_usd) * 100
@@ -154,7 +188,7 @@ def compare_reports(
     )
     limitations = [
         "Comparison uses stored run summaries from the local SQLite ledger.",
-        "No quality score is included yet; do not claim savings until quality evaluation exists.",
+        "Comparison requires candidate quality pass rate to meet or exceed baseline before savings are defensible.",
     ]
     if not same_workload_path:
         limitations.append("Runs used different workload paths and are not comparable.")
@@ -164,6 +198,12 @@ def compare_reports(
         limitations.append("Runs used different request counts and are not comparable.")
     if baseline.provider != candidate.provider:
         limitations.append("Runs used different providers and are not comparable.")
+    if not same_quality_coverage:
+        limitations.append("Runs have different quality-evaluated request counts.")
+    if baseline.quality_pass_rate is None or candidate.quality_pass_rate is None:
+        limitations.append("Quality pass rate is unavailable; do not claim savings.")
+    elif not candidate_quality_ok:
+        limitations.append("Candidate quality pass rate is below baseline.")
 
     return BenchmarkComparison(
         baseline_run_id=baseline_run_id,
@@ -180,6 +220,13 @@ def compare_reports(
         latency_p95_delta_ms=candidate.latency_p95_ms - baseline.latency_p95_ms,
         baseline_error_rate=baseline.error_rate,
         candidate_error_rate=candidate.error_rate,
+        baseline_quality_pass_rate=baseline.quality_pass_rate,
+        candidate_quality_pass_rate=candidate.quality_pass_rate,
+        quality_pass_rate_delta=(
+            candidate.quality_pass_rate - baseline.quality_pass_rate
+            if candidate.quality_pass_rate is not None and baseline.quality_pass_rate is not None
+            else None
+        ),
         comparable=comparable,
         limitations=limitations,
     )

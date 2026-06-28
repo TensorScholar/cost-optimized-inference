@@ -28,6 +28,10 @@ class RequestTrace:
     error_type: str | None
     error_message: str | None
     timestamp: str
+    quality_passed: bool | None = None
+    quality_score: float | None = None
+    quality_reason: str | None = None
+    eval_type: str | None = None
 
     @classmethod
     def from_response(

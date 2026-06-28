@@ -3,10 +3,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+from dataclasses import replace
 from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 
+from inference_engine.benchmarking.eval import evaluate_text
 from inference_engine.benchmarking.harness import (
     compare_reports,
     load_workload,
@@ -113,6 +115,15 @@ async def _run(args: argparse.Namespace) -> int:
         try:
             response = await backend_for(selected_model).infer(request)
             trace = RequestTrace.from_response(provider=args.provider, response=response)
+            eval_result = evaluate_text(response.text, item.eval_spec)
+            if eval_result is not None:
+                trace = replace(
+                    trace,
+                    quality_passed=eval_result.passed,
+                    quality_score=eval_result.score,
+                    quality_reason=eval_result.reason,
+                    eval_type=eval_result.eval_type,
+                )
         except ProviderError as exc:
             trace = RequestTrace.from_error(
                 request_id=request.id,
