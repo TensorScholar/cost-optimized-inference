@@ -13,6 +13,7 @@ from inference_engine.domain.models.routing import (
     RoutingDecision,
     RoutingStrategy,
 )
+from inference_engine.domain.routing.policy import PolicyRouter
 
 
 @pytest.mark.asyncio
@@ -98,3 +99,26 @@ async def test_benchmark_budget_violation_skips_provider_call(
     assert exit_code == 1
     assert "budget_violation" in (tmp_path / "ledger.jsonl").read_text(encoding="utf-8")
     assert "fake expensive route" in (tmp_path / "routes.jsonl").read_text(encoding="utf-8")
+
+
+def test_benchmark_build_router_supports_policy_strategy() -> None:
+    args = argparse.Namespace(
+        strategy="policy",
+        model="gpt-4o-mini",
+        economy_model="gpt-4o-mini",
+        standard_model="gpt-4o-mini",
+        premium_model="gpt-4o",
+        max_estimated_cost_usd=0.002,
+        policy_latency_slo_ms=800,
+        policy_min_quality_score=0.70,
+        policy_cost_weight=0.55,
+        policy_latency_weight=0.25,
+        policy_quality_weight=0.20,
+    )
+
+    router = benchmark_script._build_router(args)
+
+    assert isinstance(router, PolicyRouter)
+    assert router.config.max_estimated_cost_usd == 0.002
+    assert router.config.latency_slo_ms == 800
+    assert router.config.min_quality_score == 0.70

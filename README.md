@@ -33,6 +33,7 @@ The repository now has:
 - a benchmark harness with a replayable JSONL workload, JSON report output, and baseline-vs-candidate comparison from stored runs;
 - deterministic quality validators for workload-declared checks: JSON keys, exact match, and required substrings;
 - deterministic `single_model` and `rule_based` baseline routing modes;
+- deterministic `policy` routing with explicit cost budget, latency SLO, quality floor, and reason codes;
 - route decision traces with selected model, considered models, fallback models, reason, estimated latency, and estimated cost;
 - pre-provider estimated cost budget enforcement for benchmark runs;
 - benchmark run export to JSON and Markdown from the SQLite ledger;
@@ -44,7 +45,7 @@ The repository now has:
 Not implemented yet:
 
 - provider usage storage in SQLite or DuckDB;
-- policy router with observed latency profiles and richer budget policies;
+- deadline-aware fallback policy constraints and observed-profile adaptation;
 - published measured savings reports;
 - broad semantic quality evaluation beyond deterministic validators;
 - async batch lane;
@@ -144,6 +145,22 @@ Run a candidate strategy on the same workload:
   --run-id candidate-rule-based
 ```
 
+Run the deterministic policy router with explicit SLO and budget constraints:
+
+```bash
+.venv/bin/python scripts/run_benchmark.py \
+  run \
+  --workload benchmarks/workloads/smoke.jsonl \
+  --strategy policy \
+  --economy-model gpt-4o-mini \
+  --standard-model gpt-4o-mini \
+  --premium-model gpt-4o \
+  --max-estimated-cost-usd 0.002 \
+  --policy-latency-slo-ms 800 \
+  --policy-min-quality-score 0.70 \
+  --run-id candidate-policy
+```
+
 Compare stored runs:
 
 ```bash
@@ -171,7 +188,7 @@ Export one stored run:
    Run real API-key benchmarks and commit reviewed report artifacts with quality pass rate, cost, latency, route decisions, and limitations.
 
 3. **Phase 3: Policy router**
-   Route by cost, latency SLO, quality tier, deadline, and fallback constraints.
+   Extend the implemented deterministic policy router with deadline-aware fallback constraints and observed-profile adaptation.
 
 4. **Phase 4: Eval-aware routing**
    Prevent cheaper routing from silently degrading answer quality.

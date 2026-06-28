@@ -24,12 +24,13 @@ The previous status language claimed production readiness and complete infrastru
 - Benchmark runs can enforce `--max-estimated-cost-usd` before provider execution; budget violations are recorded without charging provider calls.
 - `scripts/run_benchmark.py export` can export a stored run as JSON and Markdown evidence.
 - Benchmark reports include model distribution, route reason distribution, and observed p50/p95 latency by model.
+- Deterministic `policy` routing is available for benchmark runs with explicit cost budget, latency SLO, quality floor, and auditable reason codes.
 - GitHub Actions CI runs lint, type checking, and tests without provider calls.
 - Local `.venv` gates pass for tests, lint, typecheck, and import smoke.
 
 ## What Is Not Implemented Yet
 
-- Policy router with observed latency profiles and richer budget policies.
+- Deadline-aware fallback policy constraints and observed-profile adaptation.
 - Published baseline-vs-candidate savings reports with real run artifacts.
 - Semantic quality evaluation beyond simple deterministic validators.
 - Eval-aware routing.

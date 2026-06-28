@@ -2,11 +2,17 @@
 import pytest
 
 from inference_engine.domain.models.request import InferenceRequest, ModelParameters
-from inference_engine.domain.models.routing import ModelConfig, ModelTier, RoutingStrategy
+from inference_engine.domain.models.routing import (
+    ModelConfig,
+    ModelTier,
+    RoutingReason,
+    RoutingStrategy,
+)
 from inference_engine.domain.routing.baseline import BaselineRouter, BaselineRoutingModeError
 from inference_engine.domain.routing.complexity import ComplexityEstimator
 from inference_engine.domain.routing.cost_aware import CostAwareRouter
 from inference_engine.domain.routing.load_balanced import LoadBalancedRouter
+from inference_engine.domain.routing.policy import PolicyRouter, PolicyRouterConfig
 
 
 @pytest.fixture
@@ -168,6 +174,121 @@ class TestBaselineRouter:
 
         with pytest.raises(BaselineRoutingModeError, match="single_model_id"):
             await router.route(simple_request)
+
+
+class TestPolicyRouter:
+    """Tests for deterministic SLO and budget-aware policy routing."""
+
+    @pytest.fixture
+    def policy_models(self) -> list[ModelConfig]:
+        return [
+            ModelConfig(
+                id="economy",
+                name="Economy",
+                tier=ModelTier.ECONOMY,
+                max_context_length=4096,
+                avg_latency_ms=250,
+                cost_per_1k_input_tokens=0.001,
+                cost_per_1k_output_tokens=0.002,
+            ),
+            ModelConfig(
+                id="standard",
+                name="Standard",
+                tier=ModelTier.STANDARD,
+                max_context_length=8192,
+                avg_latency_ms=700,
+                cost_per_1k_input_tokens=0.005,
+                cost_per_1k_output_tokens=0.01,
+            ),
+            ModelConfig(
+                id="premium",
+                name="Premium",
+                tier=ModelTier.PREMIUM,
+                max_context_length=128_000,
+                avg_latency_ms=1400,
+                cost_per_1k_input_tokens=0.03,
+                cost_per_1k_output_tokens=0.06,
+            ),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_policy_prefers_candidate_within_budget(self, simple_request, policy_models):
+        router = PolicyRouter(
+            policy_models,
+            ComplexityEstimator(),
+            PolicyRouterConfig(max_estimated_cost_usd=0.00003),
+        )
+
+        decision = await router.route(simple_request)
+
+        assert decision.strategy == RoutingStrategy.POLICY
+        assert decision.selected_model.id == "economy"
+        assert decision.estimated_cost <= 0.00003
+        assert decision.decision_reason == RoutingReason.POLICY_COST_WITHIN_BUDGET
+
+    @pytest.mark.asyncio
+    async def test_policy_latency_slo_filters_slow_models(self, simple_request, policy_models):
+        router = PolicyRouter(
+            policy_models,
+            ComplexityEstimator(),
+            PolicyRouterConfig(
+                latency_slo_ms=800,
+                min_quality_score=0.70,
+            ),
+        )
+
+        decision = await router.route(simple_request)
+
+        assert decision.selected_model.id == "standard"
+        assert decision.estimated_latency_ms <= 800
+        assert decision.decision_reason == RoutingReason.POLICY_LATENCY_WITHIN_SLO
+
+    @pytest.mark.asyncio
+    async def test_policy_quality_floor_selects_capable_model(self, simple_request, policy_models):
+        router = PolicyRouter(
+            policy_models,
+            ComplexityEstimator(),
+            PolicyRouterConfig(min_quality_score=0.90),
+        )
+
+        decision = await router.route(simple_request)
+
+        assert decision.selected_model.id == "premium"
+        assert decision.estimated_quality_score >= 0.90
+        assert decision.decision_reason == RoutingReason.POLICY_QUALITY_FLOOR
+
+    @pytest.mark.asyncio
+    async def test_policy_records_impossible_budget_reason(self, simple_request, policy_models):
+        router = PolicyRouter(
+            policy_models,
+            ComplexityEstimator(),
+            PolicyRouterConfig(max_estimated_cost_usd=0.00000001),
+        )
+
+        decision = await router.route(simple_request)
+
+        assert decision.selected_model.id == "economy"
+        assert decision.estimated_cost > 0.00000001
+        assert decision.decision_reason == RoutingReason.POLICY_NO_CANDIDATE_WITHIN_BUDGET
+
+    @pytest.mark.asyncio
+    async def test_policy_does_not_mask_impossible_quality_reason(
+        self,
+        simple_request,
+        policy_models,
+    ):
+        router = PolicyRouter(
+            policy_models,
+            ComplexityEstimator(),
+            PolicyRouterConfig(
+                min_quality_score=1.0,
+                latency_slo_ms=800,
+            ),
+        )
+
+        decision = await router.route(simple_request)
+
+        assert decision.decision_reason == RoutingReason.POLICY_NO_CANDIDATE_MEETS_QUALITY_FLOOR
 
 
 class TestLoadBalancedRouter:

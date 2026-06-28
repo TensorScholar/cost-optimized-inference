@@ -24,6 +24,7 @@ from inference_engine.domain.models.request import InferenceRequest, ModelParame
 from inference_engine.domain.models.routing import ModelConfig, ModelTier, RoutingStrategy
 from inference_engine.domain.routing.baseline import BaselineRouter
 from inference_engine.domain.routing.complexity import ComplexityEstimator
+from inference_engine.domain.routing.policy import PolicyRouter, PolicyRouterConfig
 from inference_engine.infrastructure.models.errors import ProviderError, classify_openai_error
 from inference_engine.infrastructure.models.openai_backend import OpenAIBackend, RetryPolicy
 from inference_engine.infrastructure.telemetry.request_log import (
@@ -67,7 +68,11 @@ def _add_run_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--workload", default="benchmarks/workloads/smoke.jsonl")
     parser.add_argument("--provider", choices=["openai"], default="openai")
     parser.add_argument("--model", default="gpt-4o-mini")
-    parser.add_argument("--strategy", choices=["single_model", "rule_based"], default="single_model")
+    parser.add_argument(
+        "--strategy",
+        choices=["single_model", "rule_based", "policy"],
+        default="single_model",
+    )
     parser.add_argument("--economy-model", default="gpt-4o-mini")
     parser.add_argument("--standard-model", default="gpt-4o-mini")
     parser.add_argument("--premium-model", default="gpt-4o")
@@ -80,6 +85,11 @@ def _add_run_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--report-path", default="reports/benchmarks/latest-report.json")
     parser.add_argument("--route-ledger-path", default="reports/benchmarks/latest-routes.jsonl")
     parser.add_argument("--max-estimated-cost-usd", type=float, default=None)
+    parser.add_argument("--policy-latency-slo-ms", type=int, default=None)
+    parser.add_argument("--policy-min-quality-score", type=float, default=None)
+    parser.add_argument("--policy-cost-weight", type=float, default=0.55)
+    parser.add_argument("--policy-latency-weight", type=float, default=0.25)
+    parser.add_argument("--policy-quality-weight", type=float, default=0.20)
     parser.add_argument("--run-id", default=None)
 
 
@@ -280,7 +290,7 @@ def _export(args: argparse.Namespace) -> int:
     return 0
 
 
-def _build_router(args: argparse.Namespace) -> BaselineRouter:
+def _build_router(args: argparse.Namespace) -> BaselineRouter | PolicyRouter:
     strategy = RoutingStrategy(args.strategy)
     if strategy == RoutingStrategy.SINGLE_MODEL:
         return BaselineRouter(
@@ -295,6 +305,19 @@ def _build_router(args: argparse.Namespace) -> BaselineRouter:
         _model_config(args.standard_model, ModelTier.STANDARD),
         _model_config(args.premium_model, ModelTier.PREMIUM),
     ]
+    if strategy == RoutingStrategy.POLICY:
+        return PolicyRouter(
+            models,
+            ComplexityEstimator(),
+            PolicyRouterConfig(
+                max_estimated_cost_usd=args.max_estimated_cost_usd,
+                latency_slo_ms=args.policy_latency_slo_ms,
+                min_quality_score=args.policy_min_quality_score,
+                cost_weight=args.policy_cost_weight,
+                latency_weight=args.policy_latency_weight,
+                quality_weight=args.policy_quality_weight,
+            ),
+        )
     return BaselineRouter(
         models,
         ComplexityEstimator(),

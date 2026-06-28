@@ -5,7 +5,14 @@ from .cache import CacheEntry, CacheKey, CacheMetrics, CacheStrategy, PrefixCach
 from .cost import CostAttribution, CostBreakdown, CostMetrics
 from .request import InferenceRequest, ModelParameters, RequestMetadata, RequestPriority
 from .response import CacheInfo, InferenceResponse, UsageMetrics
-from .routing import ComplexityEstimate, ModelConfig, ModelTier, RoutingDecision, RoutingStrategy
+from .routing import (
+    ComplexityEstimate,
+    ModelConfig,
+    ModelTier,
+    RoutingDecision,
+    RoutingReason,
+    RoutingStrategy,
+)
 
 __all__ = [
     "BatchMetrics",
@@ -29,7 +36,7 @@ __all__ = [
     "RequestMetadata",
     "RequestPriority",
     "RoutingDecision",
+    "RoutingReason",
     "RoutingStrategy",
     "UsageMetrics",
 ]
-

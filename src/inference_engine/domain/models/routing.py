@@ -25,11 +25,23 @@ class ModelTier(StrEnum):
 class RoutingStrategy(StrEnum):
     SINGLE_MODEL = "single_model"
     RULE_BASED = "rule_based"
+    POLICY = "policy"
     COST_OPTIMAL = "cost_optimal"
     LATENCY_OPTIMAL = "latency_optimal"
     QUALITY_OPTIMAL = "quality_optimal"
     BALANCED = "balanced"
     ROUND_ROBIN = "round_robin"
+
+
+class RoutingReason(StrEnum):
+    POLICY_PREFERRED_MODEL = "policy.preferred_model"
+    POLICY_COST_WITHIN_BUDGET = "policy.cost_within_budget"
+    POLICY_LATENCY_WITHIN_SLO = "policy.latency_within_slo"
+    POLICY_QUALITY_FLOOR = "policy.quality_floor"
+    POLICY_BALANCED_SCORE = "policy.balanced_score"
+    POLICY_NO_CANDIDATE_WITHIN_BUDGET = "policy.no_candidate_within_budget"
+    POLICY_NO_CANDIDATE_WITHIN_LATENCY_SLO = "policy.no_candidate_within_latency_slo"
+    POLICY_NO_CANDIDATE_MEETS_QUALITY_FLOOR = "policy.no_candidate_meets_quality_floor"
 
 
 @dataclass(frozen=True)
