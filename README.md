@@ -1,233 +1,160 @@
 # Honest LLM Inference Gateway
 
-An SLO-aware LLM inference gateway and benchmark lab for proving real cost, latency, and quality tradeoffs in model routing.
+An evidence-first LLM inference gateway and benchmark lab for measuring real cost,
+latency, and quality tradeoffs in model routing.
 
-This project is intentionally narrow: it is not a fake "production platform" and it does not claim savings without evidence. The goal is to build the kind of infrastructure artifact that matters in real AI platform work: route requests by policy, record actual usage, compare against a baseline, and report whether the optimization was worth it.
+This is intentionally not a fake production platform. The project focuses on one
+narrow workflow: execute real provider calls, record usage, route by policy, compare
+against a baseline, and export reproducible evidence.
 
-## Why This Exists
+## What It Solves
 
-LLM systems often start with one model and one provider call. That is simple, but it becomes expensive and hard to reason about once traffic grows. Teams need to answer practical questions:
+LLM routing claims are easy to fake. This repo is built to answer practical questions
+with measured data:
 
-- Which model should handle this request?
-- Is the request latency-sensitive, or can it use a cheaper async path?
-- Did routing save money without degrading quality?
-- Which feature, user, or workload is driving spend?
-- Are cost and latency claims backed by reproducible measurements?
+- Which model handled each request, and why?
+- Did routing reduce cost without breaking quality checks?
+- What did the provider actually report for tokens, latency, retries, and cost?
+- Can a benchmark run be reproduced from a command and exported artifact?
 
-This repository is being rebuilt around those questions.
+## Current Capabilities
 
-## Current Status
+- OpenAI-compatible provider execution with timeout, bounded retries, cancellation,
+  normalized provider errors, and usage-based cost accounting.
+- FreeModel-compatible pricing entries for confirmed models:
+  `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.3-codex`.
+- FastAPI `/v1/inference` route backed by the same real provider adapter.
+- JSONL request ledger and SQLite benchmark ledger.
+- Queryable provider usage summaries by run.
+- Deterministic baseline routing: `single_model`, `rule_based`.
+- Deterministic policy routing with cost budget, latency SLO, quality floor, and
+  auditable reason codes.
+- Benchmark export to JSON and Markdown, including route decisions, provider usage,
+  token/cost breakdowns, latency profiles, and limitations.
+- Strict local gates: `ruff`, `mypy`, `pytest`.
 
-**Phase 0 baseline repair is complete. Phase 1 implementation has started.**
+## What Is Not Claimed
 
-The repository now has:
+- No production-readiness claim.
+- No savings claim without committed benchmark evidence.
+- No fake dashboards, synthetic savings, or placeholder provider integrations.
+- No broad semantic quality evaluation yet.
+- No large-scale infrastructure such as Kubernetes, service mesh, or distributed queues.
 
-- an importable Python package baseline;
-- strict local gates for lint, type checking, and tests;
-- early domain primitives for batching, caching, routing, and cost calculation;
-- an OpenAI-compatible provider adapter with timeout configuration, bounded retries, cancellation propagation, normalized provider errors, usage extraction, and real cost accounting;
-- provider retry telemetry recorded in request traces and benchmark summaries;
-- a versioned pricing table for supported OpenAI and FreeModel model cost estimates;
-- an append-only JSONL request ledger for local smoke and benchmark runs;
-- a local SQLite benchmark ledger that stores run summaries and request traces by `run_id`;
-- queryable SQLite provider usage rows and summaries for benchmark cost, token, and retry analysis;
-- a small `inference-smoke` CLI for one real provider call;
-- a thin `/v1/inference` FastAPI route that executes the OpenAI-compatible provider adapter when `OPENAI_API_KEY` is set;
-- a benchmark harness with a replayable JSONL workload, JSON report output, and baseline-vs-candidate comparison from stored runs;
-- deterministic quality validators for workload-declared checks: JSON keys, exact match, and required substrings;
-- deterministic `single_model` and `rule_based` baseline routing modes;
-- deterministic `policy` routing with explicit cost budget, latency SLO, quality floor, and reason codes;
-- route decision traces with selected model, considered models, fallback models, reason, estimated latency, and estimated cost;
-- pre-provider estimated cost budget enforcement for benchmark runs;
-- benchmark run export to JSON and Markdown from the SQLite ledger;
-- Markdown benchmark exports include provider usage summaries with model-level cost and token breakdowns;
-- per-run model distribution, route reason distribution, and observed latency profiles by model;
-- GitHub Actions CI for lint, type checking, and tests;
-- architecture and benchmark planning docs under [docs/](./docs/README.md);
-- repo-level Codex guidance and review skills for keeping future work honest.
-
-Not implemented yet:
-
-- deadline-aware fallback policy constraints and observed-profile adaptation;
-- committed real benchmark artifacts from an API-key run;
-- published measured savings reports;
-- broad semantic quality evaluation beyond deterministic validators;
-- async batch lane;
-- prompt cache advisor.
-
-## What Makes It Different
-
-The project is designed around evidence, not dashboard theater.
-
-Every future optimization should produce:
-
-- a baseline comparison;
-- actual provider usage or clearly labeled estimates;
-- p50/p95 latency;
-- quality or correctness results;
-- route decision records;
-- a reproducible command.
-
-If a cost reduction cannot be reproduced from a benchmark report, it does not belong in the README.
-
-## Target Architecture
-
-```text
-Client
-  -> FastAPI Gateway
-  -> Request Normalizer
-  -> Policy Router
-  -> Execution Lane
-       -> Sync Provider Adapter
-       -> Async Batch Adapter
-       -> Local vLLM Adapter
-  -> Usage Ledger
-  -> Benchmark / Eval Reporter
-```
-
-Initial implementation stays small: FastAPI, typed domain models, SQLite or DuckDB for the ledger, pytest, ruff, mypy, and provider adapters only when they record real usage.
-
-## Development
-
-Create the local environment:
+## Quick Start
 
 ```bash
 python3 -m venv .venv
-.venv/bin/python -m pip install -e ".[dev]"
+.venv/bin/python -m pip install -e ".[dev,providers]"
 ```
 
-Run the verified gates:
+Run local gates:
 
 ```bash
 make check
 ```
 
-Equivalent explicit commands:
+For real provider calls, create a local `.env` file:
 
 ```bash
-.venv/bin/python -m ruff check src tests
-.venv/bin/python -m mypy src
-.venv/bin/python -m pytest
+OPENAI_BASE_URL=https://api.freemodel.dev/v1
+OPENAI_API_KEY=your_key_here
+OPENAI_TEST_MODEL=gpt-5.4-mini
 ```
 
-Current baseline:
+`.env` is ignored by git.
 
-```text
-ruff:  all checks passed
-mypy:  no issues found in 82 source files
-pytest: 66 passed
-```
-
-Run one real provider smoke call when `OPENAI_API_KEY` is set:
+## Real Provider Smoke
 
 ```bash
+set -a; source .env; set +a
+
 .venv/bin/python -m inference_engine.cli \
   --provider openai \
   --model gpt-5.4-mini \
-  --prompt "Return JSON only with keys status and reason."
+  --prompt "Reply with exactly: ok" \
+  --max-tokens 8 \
+  --temperature 0
 ```
 
 Run the gated real-provider integration test:
 
 ```bash
-OPENAI_TEST_MODEL=gpt-5.4-mini .venv/bin/python -m pytest tests/integration/test_real_provider.py -q
+set -a; source .env; set +a
+.venv/bin/python -m pytest tests/integration/test_real_provider.py -q
 ```
 
-Run the local API and call the same provider path:
+Without credentials, this test is skipped.
+
+## Benchmark Flow
+
+Run a baseline:
 
 ```bash
-uvicorn inference_engine.adapters.api.app:app --host 127.0.0.1 --port 8000
-curl -s http://127.0.0.1:8000/v1/inference \
-  -H 'content-type: application/json' \
-  -d '{"prompt":"Return JSON only with keys status and reason.","model":"gpt-4o-mini"}'
-```
+set -a; source .env; set +a
 
-Run the v0 benchmark harness:
-
-```bash
-.venv/bin/python scripts/run_benchmark.py \
-  run \
+.venv/bin/python scripts/run_benchmark.py run \
   --workload benchmarks/workloads/smoke.jsonl \
   --strategy single_model \
-  --model gpt-4o-mini \
+  --model gpt-5.4-mini \
   --max-estimated-cost-usd 0.01 \
-  --run-id baseline-gpt-4o-mini
+  --run-id baseline-gpt-5-4-mini
 ```
 
-Run a candidate strategy on the same workload:
+Export evidence:
 
 ```bash
-.venv/bin/python scripts/run_benchmark.py \
-  run \
-  --workload benchmarks/workloads/smoke.jsonl \
-  --strategy rule_based \
-  --run-id candidate-rule-based
-```
-
-Run the deterministic policy router with explicit SLO and budget constraints:
-
-```bash
-.venv/bin/python scripts/run_benchmark.py \
-  run \
-  --workload benchmarks/workloads/smoke.jsonl \
-  --strategy policy \
-  --economy-model gpt-4o-mini \
-  --standard-model gpt-4o-mini \
-  --premium-model gpt-4o \
-  --max-estimated-cost-usd 0.002 \
-  --policy-latency-slo-ms 800 \
-  --policy-min-quality-score 0.70 \
-  --run-id candidate-policy
-```
-
-Compare stored runs:
-
-```bash
-.venv/bin/python scripts/run_benchmark.py \
-  compare \
-  --baseline-run-id baseline-gpt-4o-mini \
-  --candidate-run-id candidate-rule-based
-```
-
-Export one stored run:
-
-```bash
-.venv/bin/python scripts/run_benchmark.py \
-  export \
-  --run-id baseline-gpt-4o-mini \
+.venv/bin/python scripts/run_benchmark.py export \
+  --run-id baseline-gpt-5-4-mini \
   --format both
 ```
 
-Summarize stored provider usage for a run:
+Summarize stored provider usage:
 
 ```bash
-.venv/bin/python scripts/run_benchmark.py \
-  usage-summary \
-  --run-id baseline-gpt-4o-mini \
-  --output-path reports/benchmarks/latest-usage-summary.json
+.venv/bin/python scripts/run_benchmark.py usage-summary \
+  --run-id baseline-gpt-5-4-mini
 ```
 
-## Roadmap
+## Current Evidence
 
-1. **Phase 1: Real provider path and local ledger**
-   OpenAI-compatible execution, normalized errors, cost accounting, request tracing, and smoke CLI.
+Recent local validation with FreeModel `gpt-5.4-mini`:
 
-2. **Phase 2: Evidence reports**
-   Run real API-key benchmarks and commit reviewed report artifacts with quality pass rate, cost, latency, route decisions, and limitations.
+- provider smoke call succeeded;
+- usage metadata was returned;
+- cost was calculated from the versioned pricing table;
+- gated real-provider integration test passed with credentials;
+- normal test suite remains credential-safe by skipping the real-provider test.
 
-3. **Phase 3: Policy router**
-   Extend the implemented deterministic policy router with deadline-aware fallback constraints and observed-profile adaptation.
+A one-off benchmark run completed 3/3 provider calls with zero retries, but the
+deterministic smoke workload only passed quality checks on 1/3 tasks. That means the
+next meaningful work is improving workload/eval validity before publishing any cost
+or routing claim.
 
-4. **Phase 4: Eval-aware routing**
-   Prevent cheaper routing from silently degrading answer quality.
+## Architecture
 
-5. **Phase 5: Async batch lane and prompt-cache advisor**
-   Add real cost levers for non-urgent and repeated-prefix workloads.
+```text
+Client
+  -> FastAPI / CLI
+  -> Provider Adapter
+  -> Policy Router
+  -> Usage Ledger
+  -> Benchmark Reporter
+```
 
-See [Implementation Roadmap](./docs/02_IMPLEMENTATION_ROADMAP.md) for acceptance criteria.
+The default stack stays small: FastAPI, provider SDKs, SQLite, pytest, ruff, and mypy.
+
+## Next Work
+
+1. Tighten the smoke workload so quality checks are deterministic and fair.
+2. Commit reviewed real benchmark artifacts with limitations.
+3. Add deadline-aware fallback constraints to policy routing.
+4. Feed observed latency profiles back into routing decisions.
+5. Add broader eval coverage beyond simple deterministic validators.
 
 ## Documentation
 
+- [Project Status](./PROJECT_STATUS.md)
 - [Strategy Brief](./docs/00_STRATEGY_BRIEF.md)
 - [Target Architecture](./docs/01_TARGET_ARCHITECTURE.md)
 - [Implementation Roadmap](./docs/02_IMPLEMENTATION_ROADMAP.md)
@@ -236,4 +163,4 @@ See [Implementation Roadmap](./docs/02_IMPLEMENTATION_ROADMAP.md) for acceptance
 
 ## Principle
 
-Small, real, measurable infrastructure beats a large scaffold with fake production claims.
+Small, real, measurable infrastructure beats a large scaffold with fake claims.
