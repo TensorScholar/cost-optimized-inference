@@ -11,7 +11,7 @@ The previous status language claimed production readiness and complete infrastru
 - The strategy, architecture, roadmap, benchmark plan, and Codex quality workflow are documented under [docs/](./docs/README.md).
 - Early domain primitives for batching, caching, routing, and cost calculation are importable.
 - OpenAI-compatible provider execution is implemented with bounded retries, timeout configuration, cancellation propagation, normalized provider errors, and usage extraction.
-- Cost accounting uses a versioned model pricing table and fails on unknown pricing instead of inventing a value.
+- Cost accounting uses a versioned model pricing table, including confirmed FreeModel model IDs, and fails on unknown pricing instead of inventing a value.
 - Request traces can be appended to a local JSONL ledger.
 - `inference-smoke` can make one real provider call when `OPENAI_API_KEY` is set.
 - `/v1/inference` can execute the same OpenAI-compatible provider adapter path when `OPENAI_API_KEY` is set.
@@ -29,6 +29,7 @@ The previous status language claimed production readiness and complete infrastru
 - Provider attempt and retry counts are recorded on responses, request traces, and benchmark summaries.
 - SQLite benchmark runs store queryable provider usage rows and aggregate usage summaries by run.
 - Markdown benchmark exports include provider usage summaries with model-level cost and token breakdowns.
+- A skipped real-provider integration test can validate usage metadata, cost accounting, latency, and retry telemetry when `OPENAI_API_KEY` is set.
 - GitHub Actions CI runs lint, type checking, and tests without provider calls.
 - Local `.venv` gates pass for tests, lint, typecheck, and import smoke.
 

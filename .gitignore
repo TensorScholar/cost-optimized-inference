@@ -16,7 +16,9 @@ dist/
 build/
 *.egg-info/
 runs/
+reports/request-ledger.jsonl
+reports/benchmarks/latest-*.json
+reports/benchmarks/latest-*.jsonl
 *.sqlite
 *.sqlite3
 *.duckdb
-

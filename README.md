@@ -27,7 +27,7 @@ The repository now has:
 - early domain primitives for batching, caching, routing, and cost calculation;
 - an OpenAI-compatible provider adapter with timeout configuration, bounded retries, cancellation propagation, normalized provider errors, usage extraction, and real cost accounting;
 - provider retry telemetry recorded in request traces and benchmark summaries;
-- a versioned pricing table for supported model cost estimates;
+- a versioned pricing table for supported OpenAI and FreeModel model cost estimates;
 - an append-only JSONL request ledger for local smoke and benchmark runs;
 - a local SQLite benchmark ledger that stores run summaries and request traces by `run_id`;
 - queryable SQLite provider usage rows and summaries for benchmark cost, token, and retry analysis;
@@ -123,8 +123,14 @@ Run one real provider smoke call when `OPENAI_API_KEY` is set:
 ```bash
 .venv/bin/python -m inference_engine.cli \
   --provider openai \
-  --model gpt-4o-mini \
+  --model gpt-5.4-mini \
   --prompt "Return JSON only with keys status and reason."
+```
+
+Run the gated real-provider integration test:
+
+```bash
+OPENAI_TEST_MODEL=gpt-5.4-mini .venv/bin/python -m pytest tests/integration/test_real_provider.py -q
 ```
 
 Run the local API and call the same provider path:

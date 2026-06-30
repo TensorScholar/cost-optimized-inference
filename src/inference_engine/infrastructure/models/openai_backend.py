@@ -1,12 +1,14 @@
+import importlib
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, replace
 from time import perf_counter
-from typing import Any
+from typing import Any, cast
 
 import structlog
 
 try:
-    from openai import AsyncOpenAI
+    _openai_module = importlib.import_module("openai")
+    AsyncOpenAI: Any = _openai_module.AsyncOpenAI
 except ImportError:
     AsyncOpenAI = None
 
@@ -157,7 +159,7 @@ class OpenAIBackend(AbstractModelBackend):
             try:
                 response = await self.client.chat.completions.create(
                     model=self.model_name,
-                    messages=messages,
+                    messages=cast(Any, messages),
                     max_tokens=request.parameters.max_tokens,
                     temperature=request.parameters.temperature,
                     top_p=request.parameters.top_p,

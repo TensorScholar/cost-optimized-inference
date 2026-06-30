@@ -3,6 +3,8 @@ import pytest
 
 from inference_engine.domain.cost.calculator import CostCalculator
 from inference_engine.domain.cost.pricing import (
+    DEFAULT_PRICING,
+    PRICING_TABLE_VERSION,
     ModelPricing,
     PricingTable,
     UnknownModelPricingError,
@@ -119,6 +121,15 @@ class TestCostCalculator:
                 input_tokens=1,
                 output_tokens=1,
             )
+
+    def test_default_pricing_includes_freemodel_models(self):
+        """Test FreeModel pricing entries used by real provider smoke runs."""
+        pricing = DEFAULT_PRICING["gpt-5.4-mini"]
+
+        assert PRICING_TABLE_VERSION == "2026-06-30"
+        assert pricing.input_per_million == 0.75
+        assert pricing.output_per_million == 4.50
+        assert pricing.cached_input_per_million == 0.075
 
 
 class TestCostBreakdown:

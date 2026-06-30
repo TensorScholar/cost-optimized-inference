@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-PRICING_TABLE_VERSION = "2026-06-27"
+PRICING_TABLE_VERSION = "2026-06-30"
 
 
 @dataclass(frozen=True)
@@ -32,6 +32,30 @@ DEFAULT_PRICING: dict[str, ModelPricing] = {
         model="gpt-3.5-turbo",
         input_per_million=0.50,
         output_per_million=1.50,
+    ),
+    "gpt-5.5": ModelPricing(
+        model="gpt-5.5",
+        input_per_million=5.00,
+        output_per_million=30.00,
+        cached_input_per_million=0.50,
+    ),
+    "gpt-5.4": ModelPricing(
+        model="gpt-5.4",
+        input_per_million=2.50,
+        output_per_million=15.00,
+        cached_input_per_million=0.25,
+    ),
+    "gpt-5.4-mini": ModelPricing(
+        model="gpt-5.4-mini",
+        input_per_million=0.75,
+        output_per_million=4.50,
+        cached_input_per_million=0.075,
+    ),
+    "gpt-5.3-codex": ModelPricing(
+        model="gpt-5.3-codex",
+        input_per_million=1.75,
+        output_per_million=14.00,
+        cached_input_per_million=0.175,
     ),
 }
 
