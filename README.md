@@ -1,11 +1,27 @@
 # Honest LLM Inference Gateway
 
+![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-provider%20gateway-009688?logo=fastapi&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-benchmark%20ledger-003B57?logo=sqlite&logoColor=white)
+![Quality Gates](https://img.shields.io/badge/ruff%20%7C%20mypy%20%7C%20pytest-strict-2F6F3E)
+
 An evidence-first LLM inference gateway and benchmark lab for measuring real cost,
 latency, and quality tradeoffs in model routing.
 
 This is intentionally not a fake production platform. The project focuses on one
 narrow workflow: execute real provider calls, record usage, route by policy, compare
 against a baseline, and export reproducible evidence.
+
+```mermaid
+flowchart LR
+    A["Workload JSONL"] --> B["Policy router"]
+    B --> C["Real provider call"]
+    C --> D["Usage + latency trace"]
+    D --> E[("SQLite ledger")]
+    E --> F["JSON / Markdown evidence"]
+    F --> G["Baseline comparison"]
+    G --> B
+```
 
 ## What It Solves
 
@@ -32,6 +48,16 @@ with measured data:
 - Benchmark export to JSON and Markdown, including route decisions, provider usage,
   token/cost breakdowns, latency profiles, and limitations.
 - Strict local gates: `ruff`, `mypy`, `pytest`.
+
+## Current Surface
+
+| Surface | State | Evidence Boundary |
+| --- | --- | --- |
+| Provider calls | Real | OpenAI-compatible adapter plus gated live-provider integration test |
+| Cost accounting | Usage-based | Provider token metadata mapped through versioned pricing |
+| Routing | Deterministic | Strategy output includes selected model, estimate, and reason code |
+| Persistence | Local and inspectable | JSONL request ledger plus SQLite benchmark tables |
+| Benchmark claims | Conservative | No savings claim until workload quality and baseline artifacts are committed |
 
 ## What Is Not Claimed
 
@@ -133,13 +159,28 @@ or routing claim.
 
 ## Architecture
 
-```text
-Client
-  -> FastAPI / CLI
-  -> Provider Adapter
-  -> Policy Router
-  -> Usage Ledger
-  -> Benchmark Reporter
+```mermaid
+flowchart TB
+    Client["Client / benchmark runner"] --> Entry["FastAPI / CLI"]
+    Entry --> Normalize["Request normalizer"]
+    Normalize --> Router{"Policy router"}
+    Router -->|model + reason code| Provider["OpenAI-compatible provider adapter"]
+    Provider --> Runtime["Timeout, retry, cancellation, error taxonomy"]
+    Runtime --> Usage["Usage, latency, and cost telemetry"]
+    Usage --> Ledger[("SQLite benchmark ledger")]
+    Ledger --> Export["JSON / Markdown reports"]
+    Ledger --> Compare["Baseline vs candidate comparison"]
+```
+
+## Routing Decision Shape
+
+```mermaid
+flowchart LR
+    Req["Inference request"] --> Constraints["Budget, latency SLO, quality floor"]
+    Constraints --> Scores["Cost / latency / quality estimates"]
+    Scores --> Decision["Selected model"]
+    Decision --> Trace["RouteTrace: reason, estimate, provider usage"]
+    Trace --> Report["Benchmark evidence"]
 ```
 
 The default stack stays small: FastAPI, provider SDKs, SQLite, pytest, ruff, and mypy.
